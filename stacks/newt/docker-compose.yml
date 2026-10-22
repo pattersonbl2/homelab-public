@@ -1,0 +1,24 @@
+services:
+  newt:
+    image: fosrl/newt:1.13.0
+    container_name: newt
+    restart: unless-stopped
+    env_file:
+      - ../env
+    volumes:
+      - newt-data:/root/.config/newt-client
+    networks:
+      - homelab
+    labels:
+      - "homepage.group=Infrastructure"
+      - "homepage.name=Newt"
+      - "homepage.icon=pangolin"
+      - "homepage.description=Pangolin tunnel connector"
+
+networks:
+  homelab:
+    name: homelab
+    external: true
+
+volumes:
+  newt-data:

@@ -1,0 +1,116 @@
+## DYNAMIC configuration (file provider)
+## Domain is written literally — file provider does NOT interpolate env vars.
+http:
+  routers:
+    sonarr:
+      rule: "Host(`sonarr.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: sonarr
+      tls:
+        certResolver: cloudflare
+    radarr:
+      rule: "Host(`radarr.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: radarr
+      tls:
+        certResolver: cloudflare
+    prowlarr:
+      rule: "Host(`prowlarr.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: prowlarr
+      tls:
+        certResolver: cloudflare
+    qbit:
+      rule: "Host(`qbit.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: qbit
+      tls:
+        certResolver: cloudflare
+    nzbget:
+      rule: "Host(`nzbget.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: nzbget
+      tls:
+        certResolver: cloudflare
+    requests:
+      rule: "Host(`requests.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: requests
+      tls:
+        certResolver: cloudflare
+    jellyfin:
+      rule: "Host(`jellyfin.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: jellyfin
+      tls:
+        certResolver: cloudflare
+    webui:
+      rule: "Host(`ai.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: webui
+      tls:
+        certResolver: cloudflare
+    semaphore:
+      rule: "Host(`semaphore.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: semaphore
+      tls:
+        certResolver: cloudflare
+    portainer:
+      rule: "Host(`portainer.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: portainer
+      tls:
+        certResolver: cloudflare
+    homepage:
+      rule: "Host(`home.local.bp31app.com`)"
+      entryPoints: [websecure]
+      service: homepage
+      tls:
+        certResolver: cloudflare
+
+  services:
+    sonarr:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.30:8989"
+    radarr:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.30:7878"
+    prowlarr:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.30:9696"
+    qbit:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.30:8080"
+    nzbget:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.30:6789"
+    requests:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.30:5055"
+    jellyfin:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.31:8096"
+    webui:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.32:8080"
+    semaphore:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.40:3000"
+    portainer:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.40:9000"
+    homepage:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.50.40:3001"

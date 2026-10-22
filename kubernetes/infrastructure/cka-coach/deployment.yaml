@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cka-coach-config
+  namespace: cka-coach
+data:
+  OLLAMA_URL: "http://192.168.50.68:11434"
+  OLLAMA_MODEL: "gemma4:e4b"
+  DB_NAME: "cka_coach"
+  TTYD_USER: "coach"
+  bashrc: |
+    export PS1="\[\033[01;35m\][cka-bp31]\[\033[00m\] \w $ "
+    alias kubectl="kubectl -n cka-bp31"
+    export KUBE_NAMESPACE=cka-bp31
+    echo ""
+    echo "  Welcome to your CKA practice sandbox."
+    echo "  Your namespace: cka-bp31"
+    echo ""
+---
+# NOTE: This Secret is managed out-of-band (not synced by ArgoCD).
+# Apply manually ONCE before first deployment:
+#   kubectl create secret generic cka-coach-db -n cka-coach \
+#     --from-literal=DB_HOST=192.168.50.15 \
+#     --from-literal=DB_USER=cka_coach \
+#     --from-literal=DB_PASSWORD=<your-password>
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cka-coach-db
+  namespace: cka-coach
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-options: Prune=false
+type: Opaque
+---
+# NOTE: This Secret is managed out-of-band (not synced by ArgoCD).
+# Apply manually ONCE before first deployment:
+#   kubectl create secret generic cka-coach-ttyd -n cka-coach \
+#     --from-literal=TTYD_PASS=<your-password>
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cka-coach-ttyd
+  namespace: cka-coach
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-options: Prune=false
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cka-coach
+  namespace: cka-coach
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: cka-coach}
+  template:
+    metadata:
+      labels: {app: cka-coach}
+    spec:
+      serviceAccountName: cka-coach-sa
+      volumes:
+      - name: bashrc
+        configMap:
+          name: cka-coach-config
+          items:
+          - key: bashrc
+            path: .bashrc
+      containers:
+      - name: cka-lab
+        image: gitea.bp31app.com/bp31/cka-lab:latest
+        args: ["serve", "--port=8080"]
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: cka-coach-config
+        - secretRef:
+            name: cka-coach-db
+        resources:
+          requests: {cpu: 50m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+        livenessProbe:
+          httpGet: {path: /, port: 8080}
+          initialDelaySeconds: 10
+          periodSeconds: 30
+      - name: ttyd
+        image: tsl0922/ttyd:1.7.8
+        command: ["/usr/bin/ttyd"]
+        args: ["-p", "7681", "-W", "bash"]
+        ports:
+        - containerPort: 7681
+        env:
+        - name: HOME
+          value: /root
+        - name: TTYD_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: cka-coach-config
+              key: TTYD_USER
+        - name: TTYD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cka-coach-ttyd
+              key: TTYD_PASS
+        volumeMounts:
+        - name: bashrc
+          mountPath: /root/.bashrc
+          subPath: .bashrc
+        resources:
+          requests: {cpu: 20m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cka-coach
+  namespace: cka-coach
+spec:
+  selector: {app: cka-coach}
+  ports:
+  - port: 8080
+    targetPort: 8080

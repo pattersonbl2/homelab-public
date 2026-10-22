@@ -1,0 +1,58 @@
+---
+# Newt - Pangolin tunnel client for K3s cluster
+# Provides Pangolin direct access to K8s services via ClusterDNS
+# Allows Pangolin to target services as: <svc>.<namespace>.svc.cluster.local:<port>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: newt
+  namespace: newt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: newt
+  template:
+    metadata:
+      labels:
+        app: newt
+    spec:
+      containers:
+        - name: newt
+          image: fosrl/newt:1.16.0
+          env:
+            - name: PANGOLIN_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: newt-credentials
+                  key: PANGOLIN_ENDPOINT
+            - name: NEWT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: newt-credentials
+                  key: NEWT_ID
+            - name: NEWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: newt-credentials
+                  key: NEWT_SECRET
+            - name: NEWT_METRICS_OTLP_ENABLED
+              value: "true"
+            - name: NEWT_METRICS_INCLUDE_TUNNEL_ID
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "otel-collector.newt.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+      restartPolicy: Always

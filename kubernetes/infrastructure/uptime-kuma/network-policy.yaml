@@ -1,0 +1,61 @@
+---
+# Default deny all ingress
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: uptime-kuma
+spec:
+  endpointSelector: {}
+  ingress: []
+---
+# Allow Traefik ingress
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-traefik-ingress
+  namespace: uptime-kuma
+spec:
+  endpointSelector:
+    matchLabels:
+      app: uptime-kuma
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "3001"
+              protocol: TCP
+---
+# Allow monitoring (Prometheus scraping)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: uptime-kuma
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+---
+# Allow intra-namespace access (for setup Job)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: uptime-kuma
+spec:
+  endpointSelector:
+    matchLabels:
+      app: uptime-kuma
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: uptime-kuma
+      toPorts:
+        - ports:
+            - port: "3001"
+              protocol: TCP

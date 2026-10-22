@@ -1,0 +1,46 @@
+---
+- name: Configure restricted breakglass SSH access on target hosts
+  hosts: wheeljack,dockerhost-lxc,proxy-lxc,autobots,maximals
+  become: yes
+
+  vars:
+    breakglass_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_breakglass.pub') }}"
+    breakglass_commands_by_host:
+      wheeljack:
+        - "docker restart hermes"
+      dockerhost-lxc:
+        - "docker restart newt"
+        - "docker ps --format '{{ '{{' }}.Names{{ '}}' }}: {{ '{{' }}.Status{{ '}}' }}'"
+        - "docker logs --tail 20 newt"
+      proxy-lxc:
+        - "docker restart traefik"
+      autobots:
+        - "pct list && qm list"
+      maximals:
+        - "qm list"
+
+  tasks:
+    - name: Deploy the dispatch wrapper
+      template:
+        src: files/breakglass-dispatch.sh.j2
+        dest: /usr/local/bin/breakglass-dispatch.sh
+        owner: root
+        group: root
+        mode: '0755'
+      vars:
+        breakglass_allowed_commands: "{{ breakglass_commands_by_host[inventory_hostname] }}"
+
+    - name: Ensure /root/.ssh exists
+      file:
+        path: /root/.ssh
+        state: directory
+        mode: '0700'
+
+    - name: Authorize the breakglass key, restricted to the dispatch wrapper
+      lineinfile:
+        path: /root/.ssh/authorized_keys
+        line: >-
+          command="/usr/local/bin/breakglass-dispatch.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty
+          {{ breakglass_public_key }}
+        create: yes
+        mode: '0600'

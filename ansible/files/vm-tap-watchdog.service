@@ -1,0 +1,7 @@
+[Unit]
+Description=Reattach orphaned VM taps to their configured bridge
+After=pve-guests.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vm-tap-watchdog.sh

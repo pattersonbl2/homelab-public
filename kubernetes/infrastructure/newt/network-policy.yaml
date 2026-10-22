@@ -1,0 +1,23 @@
+---
+# Default deny all ingress (newt is egress-only tunnel to Pangolin VPS)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: newt
+spec:
+  endpointSelector: {}
+  ingress: []
+---
+# Allow monitoring (Prometheus scraping)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: newt
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring

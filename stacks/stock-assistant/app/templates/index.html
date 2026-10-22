@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Assistant</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+        }
+        form {
+            background: #1a1a1a;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #ccc;
+            font-weight: 500;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            font-size: 1rem;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #4a9eff;
+            color: #fff;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .help {
+            font-size: 0.875rem;
+            color: #666;
+            margin-top: -0.5rem;
+            margin-bottom: 1rem;
+        }
+        .examples {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .examples h3 {
+            margin-top: 0;
+            color: #888;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .examples ul {
+            margin: 0;
+            padding-left: 1.25rem;
+            color: #aaa;
+        }
+        .examples li {
+            margin-bottom: 0.5rem;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            color: #888;
+        }
+        .loading.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>📈 Stock Assistant</h1>
+    <p class="subtitle">AI-powered stock analysis using real-time market data</p>
+    
+    <form action="/analyze" method="POST" id="form">
+        <label for="symbols">Stock Symbols</label>
+        <input type="text" id="symbols" name="symbols" placeholder="AAPL, MSFT, GOOGL" />
+        <p class="help">Comma-separated list of stock symbols (optional)</p>
+        
+        <label for="query">Your Question</label>
+        <textarea id="query" name="query" placeholder="What would you like to know about these stocks?" required></textarea>
+        
+        <button type="submit" id="submit">Analyze</button>
+    </form>
+    
+    <div class="loading" id="loading">
+        <p>Fetching market data and analyzing...</p>
+        <p>This may take a moment while the model processes your request.</p>
+    </div>
+    
+    <div class="examples">
+        <h3>Example Questions</h3>
+        <ul>
+            <li>"How is AAPL performing compared to its 52-week high?"</li>
+            <li>"Compare the P/E ratios of MSFT, GOOGL, and META"</li>
+            <li>"What's the recent trend for NVDA?"</li>
+            <li>"Summarize the current state of TSLA stock"</li>
+        </ul>
+    </div>
+    
+    <script>
+        document.getElementById('form').addEventListener('submit', function() {
+            document.getElementById('submit').disabled = true;
+            document.getElementById('submit').textContent = 'Analyzing...';
+            document.getElementById('loading').classList.add('show');
+        });
+    </script>
+</body>
+</html>

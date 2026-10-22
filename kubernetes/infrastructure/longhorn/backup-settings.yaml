@@ -1,0 +1,22 @@
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: backup-target
+  namespace: longhorn-system
+value: "nfs://192.168.50.176:/media/backup/k3s"
+---
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: backup-weekly
+  namespace: longhorn-system
+spec:
+  name: backup-weekly
+  cron: "0 4 * * 0"
+  task: backup
+  groups:
+    - default
+  retain: 4
+  concurrency: 2
+  labels:
+    schedule: weekly

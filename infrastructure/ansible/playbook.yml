@@ -1,0 +1,14 @@
+---
+# Default entrypoint: deploys core + networking + media.
+# Uses deploy-stacks.yml (single source of truth). Override with:
+#   ansible-playbook -i inventory.ini deploy-stacks.yml -e '{"stacks_to_deploy": ["core","media"]}'
+- name: Deploy Docker Compose Homelab Setup (default stacks)
+  hosts: homelab_vms
+  vars:
+    stacks_to_deploy:
+      - core
+      - networking
+      - media
+  tasks:
+    - name: Run stack deployment
+      ansible.builtin.import_playbook: deploy-stacks.yml

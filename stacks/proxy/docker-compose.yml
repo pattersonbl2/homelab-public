@@ -1,0 +1,23 @@
+services:
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:8080"   # dashboard (optional)
+      - "8082:8082"   # prometheus metrics
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik-certs:/letsencrypt
+      - ./traefik/logs:/var/log/traefik
+
+volumes:
+  traefik-certs:

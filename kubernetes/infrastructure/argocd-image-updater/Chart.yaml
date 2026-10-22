@@ -1,0 +1,11 @@
+apiVersion: v2
+name: argocd-image-updater-wrapper
+description: Wrapper chart for argocd-image-updater
+type: application
+version: 0.1.0
+appVersion: "v1.1.1"
+
+dependencies:
+  - name: argocd-image-updater
+    version: "1.1.5"
+    repository: https://argoproj.github.io/argo-helm

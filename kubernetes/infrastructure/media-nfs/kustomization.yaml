@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - pv-arr.yaml
+  - pv-corn.yaml
+  - pvc-arr.yaml
+  - pvc-corn.yaml

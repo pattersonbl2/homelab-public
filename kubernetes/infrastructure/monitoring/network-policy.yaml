@@ -1,0 +1,71 @@
+---
+# Default deny all ingress
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  ingress: []
+---
+# Allow Traefik ingress to Grafana, Prometheus, Alertmanager, Loki
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-traefik-ingress
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+---
+# Allow intra-namespace (Grafana→Prometheus, Grafana→Loki, Prometheus→Alertmanager)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+---
+# Allow snmp_exporter to reach VyOS SNMP
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-snmp-exporter-egress
+  namespace: monitoring
+spec:
+  endpointSelector:
+    matchLabels:
+      app: snmp-exporter
+  egress:
+    - toCIDR:
+        - 10.10.10.1/32
+      toPorts:
+        - ports:
+            - port: "161"
+              protocol: UDP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP

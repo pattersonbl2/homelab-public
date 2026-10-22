@@ -1,0 +1,70 @@
+name: crowdsec
+
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.7.6
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      COLLECTIONS: >-
+        crowdsecurity/traefik
+        crowdsecurity/http-cve
+        crowdsecurity/http-dos
+        crowdsecurity/base-http-scenarios
+        crowdsecurity/linux
+        crowdsecurity/sshd
+        crowdsecurity/appsec-virtual-patching
+        crowdsecurity/appsec-generic-rules
+        crowdsecurity/whitelist-good-actors
+      GID: "${GID:-1000}"
+      BOUNCER_KEY_traefik: "${BOUNCER_KEY_TRAEFIK}"
+      BOUNCER_KEY_firewall: "${BOUNCER_KEY_FIREWALL}"
+    volumes:
+      - crowdsec-db:/var/lib/crowdsec/data/
+      - crowdsec-config:/etc/crowdsec/
+      - ./config/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./config/config.yaml.local:/etc/crowdsec/config.yaml.local:ro
+      - ./config/notifications:/etc/crowdsec/notifications:ro
+      - ./config/profiles.yaml:/etc/crowdsec/profiles.yaml:ro
+      - ./config/parsers/custom-whitelist.yaml:/etc/crowdsec/parsers/s02-enrich/custom-whitelist.yaml:ro
+      # Traefik access logs (mounted from pangolin stack)
+      - /opt/pangolin/config/traefik/logs:/var/log/traefik:ro
+      # System auth logs for SSH protection
+      - /var/log:/var/log/host:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "6060:6060"
+    networks:
+      - crowdsec
+    healthcheck:
+      test: ["CMD", "cscli", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=false"
+
+  traefik-bouncer:
+    image: fbonalair/traefik-crowdsec-bouncer:0.5.0
+    container_name: crowdsec-traefik-bouncer
+    restart: unless-stopped
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+    environment:
+      CROWDSEC_BOUNCER_API_KEY: "${BOUNCER_KEY_TRAEFIK}"
+      CROWDSEC_AGENT_HOST: crowdsec:8080
+      GIN_MODE: release
+    networks:
+      - crowdsec
+      - pangolin
+
+volumes:
+  crowdsec-db:
+  crowdsec-config:
+
+networks:
+  crowdsec:
+    driver: bridge
+  pangolin:
+    external: true

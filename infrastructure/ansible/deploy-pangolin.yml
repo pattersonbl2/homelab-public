@@ -1,0 +1,480 @@
+---
+# Deploy Pangolin + Gerbil + Traefik stack to the Hostinger VPS.
+# Safe to re-run (idempotent).
+#
+# Usage:
+#   ansible-playbook -i inventory-vps.ini deploy-pangolin.yml
+#
+- name: Deploy Pangolin stack to Hostinger VPS
+  hosts: hostinger_vps
+  become: yes
+
+  tasks:
+    # ── Docker ──────────────────────────────────────────────────────────────
+
+    - name: Remove conflicting Docker repo files (fix apt source list)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/docker.list.save
+        - /etc/apt/sources.list.d/docker.list.dpkg-old
+      ignore_errors: true
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install prerequisites for Docker apt repo
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - gnupg
+          - apt-transport-https
+        state: present
+
+    - name: Create apt keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker GPG key (keyrings)
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: true
+
+    - name: Add Docker apt repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker CE
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is running and enabled
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    # ── UFW ─────────────────────────────────────────────────────────────────
+
+    - name: Allow HTTP (80/tcp)
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: Allow HTTPS (443/tcp)
+      ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+
+    - name: Allow WireGuard (51820/udp)
+      ufw:
+        rule: allow
+        port: "51820"
+        proto: udp
+
+    - name: Allow WireGuard alt (21820/udp)
+      ufw:
+        rule: allow
+        port: "21820"
+        proto: udp
+
+    - name: Allow DNS (53/tcp)
+      ufw:
+        rule: allow
+        port: "53"
+        proto: tcp
+
+    - name: Allow DNS (53/udp)
+      ufw:
+        rule: allow
+        port: "53"
+        proto: udp
+
+    - name: Allow Pi-hole web from Docker bridge (8081/tcp)
+      ufw:
+        rule: allow
+        from_ip: 172.16.0.0/12
+        port: "8081"
+        proto: tcp
+        comment: "Pi-hole web from Docker"
+
+    - name: Allow Authentik from Docker bridge (9000/tcp)
+      ufw:
+        rule: allow
+        from_ip: 172.16.0.0/12
+        port: "9000"
+        proto: tcp
+        comment: "Authentik web from Docker"
+
+    # ── Directory layout ─────────────────────────────────────────────────────
+
+    - name: Create /opt/pangolin/config/traefik/
+      file:
+        path: /opt/pangolin/config/traefik
+        state: directory
+        mode: "0755"
+
+    - name: Create /opt/pangolin/config/letsencrypt/
+      file:
+        path: /opt/pangolin/config/letsencrypt
+        state: directory
+        mode: "0755"
+
+    - name: Create /opt/pangolin/config/traefik/logs/
+      file:
+        path: /opt/pangolin/config/traefik/logs
+        state: directory
+        mode: "0755"
+
+    # ── Copy stack files ─────────────────────────────────────────────────────
+
+    - name: Copy docker-compose.yml
+      copy:
+        src: ../stacks/pangolin/docker-compose.yml
+        dest: /opt/pangolin/docker-compose.yml
+        mode: "0644"
+
+    - name: Copy Pangolin config.yml
+      copy:
+        src: ../stacks/pangolin/config.yml
+        dest: /opt/pangolin/config/config.yml
+        mode: "0644"
+
+    - name: Check for existing Pangolin .env
+      stat:
+        path: /opt/pangolin/.env
+      register: pangolin_env_file
+
+    - name: Generate Pangolin server secret
+      shell: openssl rand -hex 32
+      register: pangolin_secret_gen
+      changed_when: false
+      when: not pangolin_env_file.stat.exists
+
+    - name: Create Pangolin .env file
+      copy:
+        dest: /opt/pangolin/.env
+        content: |
+          PANGOLIN_SERVER_SECRET={{ pangolin_secret_gen.stdout }}
+        mode: "0600"
+      when: not pangolin_env_file.stat.exists
+
+    - name: Copy Traefik static config
+      copy:
+        src: ../stacks/pangolin/traefik/traefik_config.yml
+        dest: /opt/pangolin/config/traefik/traefik_config.yml
+        mode: "0644"
+
+    - name: Copy Traefik dynamic config
+      copy:
+        src: ../stacks/pangolin/traefik/dynamic_config.yml
+        dest: /opt/pangolin/config/traefik/dynamic_config.yml
+        mode: "0644"
+
+    # ── Pi-hole VPS stack ───────────────────────────────────────────────────
+
+    - name: Create /opt/pihole/
+      file:
+        path: /opt/pihole
+        state: directory
+        mode: "0755"
+
+    - name: Disable systemd-resolved stub listener (frees port 53)
+      lineinfile:
+        path: /etc/systemd/resolved.conf
+        regexp: "^#?DNSStubListener="
+        line: "DNSStubListener=no"
+        state: present
+      register: resolved_conf
+
+    - name: Restart systemd-resolved
+      systemd:
+        name: systemd-resolved
+        state: restarted
+      when: resolved_conf.changed
+
+    - name: Copy Pi-hole docker-compose.yml
+      copy:
+        src: ../stacks/pihole-vps/docker-compose.yml
+        dest: /opt/pihole/docker-compose.yml
+        mode: "0644"
+
+    # ── Start stacks ────────────────────────────────────────────────────────
+
+    - name: Start Pangolin stack
+      community.docker.docker_compose_v2:
+        project_src: /opt/pangolin
+        state: present
+        pull: missing
+
+    - name: Start Pi-hole stack
+      community.docker.docker_compose_v2:
+        project_src: /opt/pihole
+        state: present
+        pull: missing
+      environment:
+        PIHOLE_PASSWORD: "{{ pihole_password | default('changeme') }}"
+
+    # ── monitoring-vps stack ────────────────────────────────────────────────────
+
+    - name: Create /opt/monitoring-vps/
+      file:
+        path: /opt/monitoring-vps
+        state: directory
+        mode: "0755"
+
+    - name: Copy monitoring-vps docker-compose.yml
+      copy:
+        src: ../stacks/monitoring-vps/docker-compose.yml
+        dest: /opt/monitoring-vps/docker-compose.yml
+        mode: "0644"
+
+    - name: Copy promtail config
+      copy:
+        src: ../stacks/monitoring-vps/promtail-config.yml
+        dest: /opt/monitoring-vps/promtail-config.yml
+        mode: "0644"
+
+    - name: Start monitoring-vps stack
+      community.docker.docker_compose_v2:
+        project_src: /opt/monitoring-vps
+        state: present
+        pull: missing
+
+    # ── Authentik stack ────────────────────────────────────────────────────────
+
+    - name: Create /opt/authentik/
+      file:
+        path: /opt/authentik
+        state: directory
+        mode: "0755"
+
+    - name: Copy Authentik docker-compose.yml
+      copy:
+        src: ../stacks/authentik-vps/docker-compose.yml
+        dest: /opt/authentik/docker-compose.yml
+        mode: "0644"
+
+    - name: Check for existing Authentik .env
+      stat:
+        path: /opt/authentik/.env
+      register: authentik_env_file
+
+    - name: Generate Authentik secret key
+      shell: openssl rand -hex 50
+      register: authentik_secret_gen
+      changed_when: false
+      when: not authentik_env_file.stat.exists
+
+    - name: Generate Authentik postgres password
+      shell: openssl rand -base64 24
+      register: authentik_pg_pass_gen
+      changed_when: false
+      when: not authentik_env_file.stat.exists
+
+    - name: Create Authentik .env file
+      copy:
+        dest: /opt/authentik/.env
+        content: |
+          AUTHENTIK_POSTGRES_USER=authentik
+          AUTHENTIK_POSTGRES_PASSWORD={{ authentik_pg_pass_gen.stdout }}
+          AUTHENTIK_POSTGRES_DB=authentik
+          AUTHENTIK_SECRET_KEY={{ authentik_secret_gen.stdout }}
+        mode: "0600"
+      when: not authentik_env_file.stat.exists
+
+    - name: Start Authentik stack
+      community.docker.docker_compose_v2:
+        project_src: /opt/authentik
+        state: present
+        pull: missing
+
+    # ── CrowdSec stack ─────────────────────────────────────────────────────────
+
+    - name: Create /opt/crowdsec/
+      file:
+        path: /opt/crowdsec
+        state: directory
+        mode: "0755"
+
+    - name: Create /opt/crowdsec/config/
+      file:
+        path: /opt/crowdsec/config
+        state: directory
+        mode: "0755"
+
+    - name: Create /opt/crowdsec/config/notifications/
+      file:
+        path: /opt/crowdsec/config/notifications
+        state: directory
+        mode: "0755"
+
+    - name: Copy CrowdSec docker-compose.yml
+      copy:
+        src: ../stacks/crowdsec-vps/docker-compose.yml
+        dest: /opt/crowdsec/docker-compose.yml
+        mode: "0644"
+
+    - name: Copy CrowdSec acquis.yaml
+      copy:
+        src: ../stacks/crowdsec-vps/config/acquis.yaml
+        dest: /opt/crowdsec/config/acquis.yaml
+        mode: "0644"
+
+    - name: Copy CrowdSec profiles.yaml
+      copy:
+        src: ../stacks/crowdsec-vps/config/profiles.yaml
+        dest: /opt/crowdsec/config/profiles.yaml
+        mode: "0644"
+
+    - name: Copy Discord notification config
+      copy:
+        src: ../stacks/crowdsec-vps/config/notifications/discord.yaml
+        dest: /opt/crowdsec/config/notifications/discord.yaml
+        mode: "0644"
+
+    - name: Copy Slack notification config
+      copy:
+        src: ../stacks/crowdsec-vps/config/notifications/slack.yaml
+        dest: /opt/crowdsec/config/notifications/slack.yaml
+        mode: "0644"
+
+    - name: Check for existing CrowdSec .env
+      stat:
+        path: /opt/crowdsec/.env
+      register: crowdsec_env_file
+
+    - name: Read existing CrowdSec bouncer keys from .env
+      shell: grep '{{ item }}' /opt/crowdsec/.env | cut -d= -f2
+      register: existing_keys
+      loop:
+        - BOUNCER_KEY_TRAEFIK
+        - BOUNCER_KEY_FIREWALL
+      changed_when: false
+      when: crowdsec_env_file.stat.exists
+
+    - name: Set bouncer keys from existing .env
+      set_fact:
+        crowdsec_bouncer_key: "{{ existing_keys.results[0].stdout }}"
+        crowdsec_firewall_bouncer_key: "{{ existing_keys.results[1].stdout }}"
+      when:
+        - crowdsec_env_file.stat.exists
+        - existing_keys.results[0].stdout | length > 0
+        - existing_keys.results[1].stdout | length > 0
+        - crowdsec_bouncer_key is not defined
+        - crowdsec_firewall_bouncer_key is not defined
+
+    - name: Generate CrowdSec Traefik bouncer key
+      shell: |
+        openssl rand -hex 32
+      register: bouncer_key_gen
+      changed_when: false
+      when: crowdsec_bouncer_key is not defined
+
+    - name: Set Traefik bouncer key fact
+      set_fact:
+        crowdsec_bouncer_key: "{{ bouncer_key_gen.stdout }}"
+      when: crowdsec_bouncer_key is not defined
+
+    - name: Generate CrowdSec firewall bouncer key
+      shell: |
+        openssl rand -hex 32
+      register: firewall_bouncer_key_gen
+      changed_when: false
+      when: crowdsec_firewall_bouncer_key is not defined
+
+    - name: Set firewall bouncer key fact
+      set_fact:
+        crowdsec_firewall_bouncer_key: "{{ firewall_bouncer_key_gen.stdout }}"
+      when: crowdsec_firewall_bouncer_key is not defined
+
+    - name: Create CrowdSec .env file
+      copy:
+        dest: /opt/crowdsec/.env
+        content: |
+          BOUNCER_KEY_TRAEFIK={{ crowdsec_bouncer_key }}
+          BOUNCER_KEY_FIREWALL={{ crowdsec_firewall_bouncer_key }}
+          # Uncomment and set webhook URLs to enable notifications:
+          # DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/yyy
+          # SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
+        mode: "0600"
+
+    - name: Start CrowdSec stack
+      community.docker.docker_compose_v2:
+        project_src: /opt/crowdsec
+        state: present
+        pull: missing
+
+    # ── CrowdSec Firewall Bouncer (host-level iptables) ───────────────────────
+
+    - name: Add CrowdSec apt repository key
+      get_url:
+        url: https://packagecloud.io/crowdsec/crowdsec/gpgkey
+        dest: /etc/apt/keyrings/crowdsec.asc
+        mode: "0644"
+
+    - name: Add CrowdSec apt repository
+      apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/crowdsec.asc] https://packagecloud.io/crowdsec/crowdsec/ubuntu {{ ansible_distribution_release }} main"
+        state: present
+        filename: crowdsec
+
+    - name: Install CrowdSec firewall bouncer
+      apt:
+        name: crowdsec-firewall-bouncer-iptables
+        state: present
+        update_cache: yes
+
+    - name: Configure firewall bouncer
+      copy:
+        dest: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+        content: |
+          mode: iptables
+          update_frequency: 10s
+          api_url: http://127.0.0.1:8080/
+          api_key: {{ crowdsec_firewall_bouncer_key }}
+          disable_ipv6: false
+          deny_action: DROP
+          deny_log: true
+          deny_log_prefix: "crowdsec: "
+          blacklists_ipv4: crowdsec-blacklists
+          blacklists_ipv6: crowdsec6-blacklists
+        mode: "0600"
+      notify: Restart firewall bouncer
+
+    - name: Enable and start firewall bouncer
+      systemd:
+        name: crowdsec-firewall-bouncer
+        state: started
+        enabled: yes
+
+    - name: Display CrowdSec bouncer keys
+      debug:
+        msg: |
+          CrowdSec Traefik bouncer key: {{ crowdsec_bouncer_key }}
+          CrowdSec Firewall bouncer key: {{ crowdsec_firewall_bouncer_key }}
+
+  handlers:
+    - name: Restart firewall bouncer
+      systemd:
+        name: crowdsec-firewall-bouncer
+        state: restarted

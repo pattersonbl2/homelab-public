@@ -1,0 +1,7 @@
+[Unit]
+Description=Reattach orphaned LXC veths to their configured bridge
+After=pve-guests.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lxc-veth-watchdog.sh

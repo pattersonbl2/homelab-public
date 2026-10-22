@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: cloudflare-tunnel
+data:
+  config.yaml: |
+    # Locally-managed tunnel configuration
+    # Uses credentials.json file for authentication
+    tunnel: 70b3f873-7237-472c-ad5d-e4c728107425
+    credentials-file: /etc/cloudflared/credentials.json
+
+    # Force http2 protocol — QUIC breaks WebSocket upgrades (ttyd terminals)
+    protocol: http2
+
+    # Enable WARP routing for subnet access
+    warp-routing:
+      enabled: true
+
+    # Ingress rules
+    ingress:
+      # ArgoCD is intentionally not exposed via Cloudflare Tunnel.
+      # It is reachable only at argocd.vps.bp31app.com through Pangolin,
+      # which gates access on device/identity policies.
+
+      # k8s-learn webhooks go through Traefik → nginx (rate-limited)
+      # No direct route to n8n — all traffic goes through the wildcard rule
+
+      # Gitea moved to gitea-lxc (LXC 143) 2026-07-07 — route straight to it
+      # instead of the in-cluster ingress. Reaches the LAN via vyos-gw.
+      - hostname: "gitea.bp31app.com"
+        service: http://192.168.50.44:3000
+
+      # Wildcard catch-all routes everything else through Traefik
+      # disableChunkedEncoding required for WebSocket (ttyd terminals) over http2
+      - hostname: "*.bp31app.com"
+        service: http://traefik.traefik.svc.cluster.local:80
+        originRequest:
+          disableChunkedEncoding: true
+
+      # Catch-all rule (must be last)
+      - service: http_status:404

@@ -1,0 +1,40 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: uptime-kuma-setup
+  namespace: uptime-kuma
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: setup
+          image: ghcr.io/pattersonbl2/uptime-kuma-setup:latest
+          env:
+            - name: KUMA_URL
+              value: "http://uptime-kuma.uptime-kuma.svc.cluster.local:3001"
+            - name: NTFY_URL
+              value: "http://ntfy.ntfy.svc.cluster.local/uptime-alerts"
+            - name: KUMA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: uptime-kuma-credentials
+                  key: username
+            - name: KUMA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: uptime-kuma-credentials
+                  key: password
+            - name: MONITORS_FILE
+              value: "/config/monitors.json"
+          volumeMounts:
+            - name: monitors
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: monitors
+          configMap:
+            name: uptime-kuma-monitors

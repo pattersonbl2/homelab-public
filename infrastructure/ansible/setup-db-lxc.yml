@@ -1,0 +1,147 @@
+---
+- name: Setup PostgreSQL 17 on db-1 LXC
+  hosts: db
+  gather_facts: true
+  # Reached via community.general.proxmox_pct_remote (root inside the container),
+  # which has no sudo — use su for become_user tasks.
+  become_method: ansible.builtin.su
+  vars:
+    postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+    gitea_db_password: "{{ lookup('env', 'GITEA_DB_PASSWORD') }}"
+
+  tasks:
+    # ── PostgreSQL APT Repository ──
+    - name: Install prerequisites for PostgreSQL repo
+      apt:
+        name:
+          - gnupg
+          - lsb-release
+          - wget
+          - acl
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Ensure apt keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    # apt-key is removed on Debian 13 — use a signed-by keyring instead.
+    - name: Add PostgreSQL APT signing key
+      ansible.builtin.get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /etc/apt/keyrings/pgdg.asc
+        mode: "0644"
+
+    - name: Add PostgreSQL APT repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_facts['distribution_release'] }}-pgdg main"
+        state: present
+        filename: pgdg
+
+    # ── Install packages ──
+    - name: Install PostgreSQL 17 and nfs-common
+      apt:
+        name:
+          - postgresql-17
+          - nfs-common
+          - python3-psycopg2
+        state: present
+        update_cache: true
+
+    # ── Configure PostgreSQL ──
+    - name: Set PostgreSQL listen_addresses to all interfaces
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/17/main/postgresql.conf
+        regexp: "^#?listen_addresses\\s*="
+        line: "listen_addresses = '*'"
+      notify: Restart PostgreSQL
+
+    - name: Allow subnet access in pg_hba.conf
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/17/main/pg_hba.conf
+        # Match any existing rule for this CIDR (any spacing) so re-runs replace
+        # in place instead of appending a duplicate.
+        regexp: '^host\s+all\s+all\s+192\.168\.50\.0/24\s+'
+        insertafter: "^# IPv4 local connections"
+        line: "host    all             all             192.168.50.0/24         scram-sha-256"
+      notify: Reload PostgreSQL
+
+    - name: Ensure PostgreSQL is started and enabled
+      ansible.builtin.systemd:
+        name: postgresql
+        state: started
+        enabled: true
+
+    # Flush handlers so PostgreSQL restarts before we create users/databases
+    - name: Flush handlers
+      meta: flush_handlers
+
+    # ── PostgreSQL users and databases ──
+    - name: Set postgres user password
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: postgres
+        password: "{{ postgres_password }}"
+        state: present
+
+    - name: Create n8n database (owner postgres)
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: n8n
+        owner: postgres
+        state: present
+
+    - name: Create gitea user
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: gitea
+        password: "{{ gitea_db_password }}"
+        state: present
+
+    - name: Create gitea database
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: gitea
+        owner: gitea
+        state: present
+
+    # ── Database Backup to local ZFS ──
+    # /media/backup/db on autobots is bind-mounted into the LXC at /mnt/backup/db
+    # (pct mp0). TrueNAS is retired; the target is now the local ZFS pool.
+    - name: Verify backup mount is available
+      ansible.builtin.stat:
+        path: /mnt/backup/db
+      register: backup_mount
+      failed_when: not backup_mount.stat.exists
+
+    - name: Copy backup script
+      ansible.builtin.copy:
+        src: backup-databases.sh
+        dest: /usr/local/bin/backup-databases.sh
+        mode: "0755"
+
+    - name: Setup daily backup cron job
+      ansible.builtin.cron:
+        name: "Daily PostgreSQL backup"
+        minute: "0"
+        hour: "2"
+        job: "/usr/local/bin/backup-databases.sh"
+
+  handlers:
+    - name: Restart PostgreSQL
+      ansible.builtin.systemd:
+        name: postgresql
+        state: restarted
+
+    # pg_hba.conf changes only need a reload — no dropped connections.
+    - name: Reload PostgreSQL
+      ansible.builtin.systemd:
+        name: postgresql
+        state: reloaded

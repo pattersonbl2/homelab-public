@@ -1,0 +1,20 @@
+type: slack
+name: slack_alerts
+log_level: info
+
+format: |
+  {{range . -}}
+  {{$alert := . -}}
+  {{range .Decisions -}}
+  :rotating_light: *CrowdSec Alert - Hostinger VPS*
+  
+  • *IP:* `{{.Value}}`
+  • *Action:* {{.Type}}
+  • *Duration:* {{.Duration}}
+  • *Scenario:* {{.Scenario}}
+  • *Country:* {{$alert.Source.Cn}}
+  • *AS:* {{$alert.Source.AsName}}
+  {{end -}}
+  {{end -}}
+
+webhook: ${SLACK_WEBHOOK_URL}

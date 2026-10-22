@@ -1,0 +1,41 @@
+services:
+  backup:
+    image: restic/restic:0.19.1
+    container_name: backup
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache bash dcron
+        echo "30 2 * * * /bin/bash /scripts/backup.sh >> /var/log/backup.log 2>&1" | crontab -
+        crond -f -l 2
+    env_file:
+      - ../env
+    environment:
+      - RESTIC_REPOSITORY=/mnt/backup/docker
+      - RESTIC_PASSWORD=${RESTIC_PASSWORD:?RESTIC_PASSWORD is required}
+      - B2_ACCOUNT_ID=${B2_ACCOUNT_ID:-}
+      - B2_ACCOUNT_KEY=${B2_ACCOUNT_KEY:-}
+      - B2_BUCKET=${B2_BUCKET:-}
+      - RESTIC_B2_PASSWORD=${RESTIC_B2_PASSWORD:-}
+    volumes:
+      - ./backup.sh:/scripts/backup.sh:ro
+      - ./restore.sh:/scripts/restore.sh:ro
+      # Local ZFS backup repo, bind-mounted from host /media/backup into the CT at /mnt/backup
+      - /mnt/backup:/mnt/backup
+      - /var/lib/docker/volumes:/volumes:ro
+      - ../env:/env-file/env:ro
+      - textfile-data:/textfile
+    networks:
+      - homelab
+
+volumes:
+  textfile-data:
+    name: core_textfile-data
+    external: true
+
+networks:
+  homelab:
+    name: homelab
+    external: true

@@ -1,0 +1,22 @@
+name: default_ip_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 4h
+# Uncomment the notifications you want to use:
+# notifications:
+#   - discord
+#   - slack_alerts
+on_success: break
+---
+name: long_ban_for_repeat_offenders
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Ip" && Alert.GetEventsCount() > 10
+decisions:
+  - type: ban
+    duration: 24h
+# notifications:
+#   - discord
+#   - slack_alerts
+on_success: break

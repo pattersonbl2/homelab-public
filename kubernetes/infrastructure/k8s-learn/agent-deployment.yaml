@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-learn-agent
+  namespace: k8s-learn
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: k8s-learn-agent}
+  template:
+    metadata:
+      labels: {app: k8s-learn-agent}
+    spec:
+      serviceAccountName: k8s-learn-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+      - name: agent
+        image: gitea.bp31app.com/bp31/k8s-learn-agent:latest
+        ports:
+        - {containerPort: 8080}
+        env:
+        - name: OLLAMA_URL
+          value: "http://192.168.50.68:11434/api/generate"
+        - name: MODEL
+          value: "gemma4:e4b"
+        resources:
+          requests: {cpu: 50m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-learn-agent
+  namespace: k8s-learn
+spec:
+  selector: {app: k8s-learn-agent}
+  ports:
+  - {port: 8080, targetPort: 8080}

@@ -1,0 +1,73 @@
+# Cilium CNI Configuration with BGP Support for K3s
+# This replaces the default Flannel CNI in K3s
+
+# Disable K3s default CNI (Flannel) and use Cilium
+# Add to K3s install: --flannel-backend=none --disable-network-policy --disable-kube-proxy
+
+operator:
+  replicas: 1
+
+# BGP Control Plane (Cilium 1.15+)
+# Peering configured via CiliumBGPPeeringPolicy CRD (see bgp-peering-policy.yaml)
+bgpControlPlane:
+  enabled: true
+
+# IPAM Configuration
+ipam:
+  mode: kubernetes
+  operator:
+    clusterPoolIPv4PodCIDR: "10.42.0.0/16"  # Match K3s default or your custom CIDR
+
+# Enable eBPF (recommended for performance)
+bpf:
+  masquerade: true
+  tproxy: true
+
+# Enable Hubble for observability (optional)
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# Network Policies
+enableRemoteNodeIdentity: true
+enableWellKnownIdentities: false
+
+# Service Mesh (optional - disable if not needed)
+enableServiceMesh: false
+
+# Encryption (optional - for pod-to-pod encryption)
+encryption:
+  enabled: false
+  type: ipsec
+
+# Performance tuning for homelab
+bandwidthManager:
+  enabled: true
+bpfMapDynamicSizeRatio: "0.0025"
+enableIPv4Masquerade: true
+enableIPv6Masquerade: false
+enableLocalRedirectPolicy: false
+enableNodePort: true
+enableSRv6: false
+enableXTSocketFallback: true
+installIptablesRules: true
+kubeProxyReplacement: "strict"  # Use eBPF instead of kube-proxy
+kubeProxyReplacementHealthzAddr: "0.0.0.0:10256"
+
+# Required when kube-proxy is disabled - Cilium needs direct API server access
+# since ClusterIP routing isn't available until Cilium is running
+k8sServiceHost: "10.10.10.11"
+k8sServicePort: 6443
+
+# Resource limits
+resources:
+  operator:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

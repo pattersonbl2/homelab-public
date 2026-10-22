@@ -1,0 +1,24 @@
+---
+# Public ingress via Cloudflare Tunnel -> K3s Traefik.
+# ONLY /label is exposed (HMAC-signed, expiring links from the ntfy buttons).
+# /alertmanager, /metrics and /healthz are intentionally not routed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sre-reflex-label
+  namespace: sre-reflex
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: reflex.bp31app.com
+      http:
+        paths:
+          - path: /label
+            pathType: Exact
+            backend:
+              service:
+                name: sre-reflex
+                port:
+                  number: 8080

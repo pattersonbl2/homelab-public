@@ -1,0 +1,222 @@
+---
+- name: Install K3s Cluster
+  hosts: all
+  become: yes
+  vars:
+    k3s_version: "v1.28.5+k3s1"
+    k3s_token: "{{ vault_k3s_token | default(k3s_token_var | default('CHANGE_ME')) }}"
+    disable_traefik: true
+    k3s_check_host: "{{ k3s_first_cp_host }}"
+
+  tasks:
+    - name: Get first control plane IP
+      set_fact:
+        k3s_first_cp_ip: "{{ hostvars[groups['k3s_cp'][0]]['ansible_host'] }}"
+        k3s_first_cp_host: "{{ groups['k3s_cp'][0] }}"
+      run_once: true
+      when: groups['k3s_cp'] is defined
+
+    - name: Determine node type
+      set_fact:
+        is_control_plane: "{{ inventory_hostname in groups['k3s_cp'] }}"
+        is_first_cp: "{{ inventory_hostname == k3s_first_cp_host }}"
+
+    - name: Fetch K3s token from first control plane
+      command: cat /var/lib/rancher/k3s/server/node-token
+      register: fetched_token
+      delegate_to: "{{ k3s_first_cp_host }}"
+      run_once: true
+      changed_when: false
+      failed_when: false
+      ignore_unreachable: true
+      become: true
+
+    - name: Set k3s_token fact
+      set_fact:
+        k3s_token: "{{ fetched_token.stdout | trim }}"
+      when: fetched_token is defined and fetched_token.rc is defined and fetched_token.rc == 0
+      run_once: true
+
+    - name: Configure multipathd to blacklist Longhorn devices
+      copy:
+        dest: /etc/multipath.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          defaults {
+              user_friendly_names yes
+          }
+
+          # Longhorn: multipathd must not claim iSCSI block devices, or PVC
+          # mounts fail with "already mounted or mount point busy".
+          # https://longhorn.io/kb/troubleshooting-volume-with-multipath/
+          blacklist {
+              devnode "^sd[a-z0-9]+"
+          }
+      notify: Restart multipathd
+
+    - name: Apply multipathd config before K3s install
+      meta: flush_handlers
+
+    - name: Wait for internet connectivity
+      uri:
+        url: https://get.k3s.io
+        method: GET
+        status_code: 200
+      register: internet_check
+      until: internet_check.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Install K3s on first control plane
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" K3S_TOKEN={{ k3s_token }} sh -s - server \
+          --cluster-init \
+          --tls-san {{ hostvars[k3s_first_cp_host]['ansible_host'] }} \
+          --disable traefik \
+          --flannel-backend=none \
+          --disable-network-policy \
+          --disable-kube-proxy \
+          --write-kubeconfig-mode 0644
+      when: is_first_cp
+      register: k3s_install_cp1
+      changed_when: true
+
+    - name: Wait for first control plane to be ready
+      when: is_first_cp
+      uri:
+        url: "https://{{ hostvars[k3s_first_cp_host]['ansible_host'] }}:6443"
+        method: GET
+        validate_certs: false
+        status_code: [200, 401, 403]
+      register: k3s_ready
+      until: k3s_ready.status in [200, 401, 403]
+      retries: 30
+      delay: 5
+      ignore_errors: yes
+
+    - name: Install K3s on additional control plane nodes
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" K3S_URL=https://{{ k3s_first_cp_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -s - server \
+          --disable traefik \
+          --flannel-backend=none \
+          --disable-network-policy \
+          --disable-kube-proxy \
+          --write-kubeconfig-mode 0644
+      when: is_control_plane and not is_first_cp
+      register: k3s_install_cp
+      changed_when: true
+
+    - name: Install K3s agent on worker nodes
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" K3S_URL=https://{{ k3s_first_cp_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -s - agent
+      when: not is_control_plane
+      register: k3s_install_worker
+      changed_when: true
+
+    - name: Wait for K3s service to be active
+      systemd:
+        name: "{{ 'k3s' if is_control_plane else 'k3s-agent' }}"
+        state: started
+      register: k3s_service
+      until: k3s_service.status.ActiveState == "active"
+      retries: 30
+      delay: 5
+
+    - name: Create kubectl symlink
+      file:
+        src: /usr/local/bin/k3s
+        dest: /usr/local/bin/kubectl
+        state: link
+        force: yes
+
+    - name: Wait for node to be ready (control plane)
+      when: is_control_plane
+      shell: k3s kubectl get nodes {{ inventory_hostname }} --no-headers
+      register: node_status
+      until: node_status.rc == 0 and "Ready" in node_status.stdout
+      retries: 30
+      delay: 5
+      delegate_to: "{{ k3s_check_host }}"
+      run_once: false
+
+    - name: Wait for node to be ready (workers)
+      when: not is_control_plane
+      shell: k3s kubectl get nodes {{ inventory_hostname }} --no-headers
+      register: node_status
+      until: node_status.rc == 0 and "Ready" in node_status.stdout
+      retries: 30
+      delay: 5
+      delegate_to: "{{ k3s_check_host }}"
+      run_once: false
+
+    - name: Display cluster nodes
+      shell: k3s kubectl get nodes -o wide
+      register: cluster_nodes
+      delegate_to: "{{ k3s_check_host }}"
+      run_once: true
+      changed_when: false
+
+    - name: Show cluster status
+      debug:
+        var: cluster_nodes.stdout_lines
+
+  handlers:
+    - name: Restart multipathd
+      systemd:
+        name: multipathd
+        state: restarted
+
+- name: Retrieve Kubeconfig
+  hosts: k3s_cp[0]
+  become: yes
+  gather_facts: no
+  vars:
+    local_kubeconfig_path: "{{ playbook_dir }}/../kubeconfig"
+    k3s_first_cp_ip: "{{ hostvars[groups['k3s_cp'][0]]['ansible_host'] }}"
+
+  tasks:
+    - name: Create kubeconfig directory
+      file:
+        path: "{{ local_kubeconfig_path | dirname }}"
+        state: directory
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Copy kubeconfig from first control plane
+      fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ local_kubeconfig_path }}"
+        flat: yes
+      register: kubeconfig_fetch
+
+    - name: Update kubeconfig server URL
+      replace:
+        path: "{{ local_kubeconfig_path }}"
+        regexp: '127\.0\.0\.1'
+        replace: "{{ k3s_first_cp_ip }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Set kubeconfig permissions
+      file:
+        path: "{{ local_kubeconfig_path }}"
+        mode: '0600'
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Display kubeconfig location
+      debug:
+        msg: |
+          Kubeconfig saved to: {{ local_kubeconfig_path }}
+          
+          To use it:
+          export KUBECONFIG={{ local_kubeconfig_path }}
+          kubectl get nodes
+      delegate_to: localhost
+      run_once: true
+      become: false

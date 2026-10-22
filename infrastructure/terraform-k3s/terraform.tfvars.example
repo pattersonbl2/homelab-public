@@ -1,0 +1,88 @@
+# Proxmox API Configuration
+proxmox_api_url          = "https://192.168.50.76:8006/"
+proxmox_api_token_id     = "terraform@pam!terraform-token"
+proxmox_api_token_secret = "your-token-secret-here"
+proxmox_tls_insecure     = true
+proxmox_ssh_username     = "root"
+
+# Proxmox Nodes
+proxmox_nodes = {
+  pve = {
+    name = "pve"
+    ip   = "192.168.50.76"
+  }
+  pve2 = {
+    name = "pve2"
+    ip   = "192.168.50.26"
+  }
+}
+
+# K3s Control Plane Nodes
+# - 1 CP on pve, 1 CP on pve2
+# `user` is optional per-node; omit to fall back to vm_user below (needed when
+# a node was rebuilt with a different cloud-init user than the rest of the fleet)
+k3s_cp_nodes = [
+  {
+    name         = "k3s-cp-1"
+    proxmox_node = "pve"
+    ip           = "10.10.10.11"
+    user         = "ubuntu"
+  },
+  {
+    name         = "k3s-cp-2"
+    proxmox_node = "pve2"
+    ip           = "10.10.10.12"
+  }
+]
+
+# K3s Worker Nodes (all on pve2)
+k3s_worker_nodes = [
+  {
+    name         = "k3s-worker-1"
+    proxmox_node = "pve2"
+    ip           = "10.10.10.21"
+  },
+  {
+    name         = "k3s-worker-2"
+    proxmox_node = "pve2"
+    ip           = "10.10.10.22"
+  }
+]
+
+# VM IDs start at 300
+vm_vmid_start = 300
+
+# Storage
+vm_cloud_image_datastore = "local"
+vm_storage_pool          = "local-lvm"
+
+# Control Plane VM specs
+cp_cores     = 2
+cp_memory    = 4096
+cp_disk_size = 50
+
+# Worker VM specs
+worker_cores     = 4
+worker_memory    = 8192
+worker_disk_size = 100
+
+# Network Configuration
+# vmbr1 = direct 2.5Gb link between pve and pve2
+# VyOS provides routing/DHCP on 10.10.10.0/24
+vm_bridge      = "vmbr1"
+vm_gateway     = "10.10.10.1"
+vm_subnet_mask = 24
+vm_dns_servers = ["10.10.10.1", "1.1.1.1"]
+vm_mtu         = 9000
+
+# SSH Configuration
+ssh_public_key       = "ssh-ed25519 AAAAC3... your-key-here"
+ssh_private_key_path = "~/.ssh/id_ed25519_homelab"
+
+# VM User
+vm_user     = "ubuntu"
+vm_password = ""
+
+# K3s Configuration
+k3s_version = "v1.28.5+k3s1"
+k3s_token   = "your-secure-k3s-token-here"  # Generate with: openssl rand -base64 32

@@ -1,0 +1,73 @@
+argo-cd:
+  nameOverride: argocd
+  fullnameOverride: argocd
+
+  # Install into the argocd namespace
+  global:
+    domain: argocd.vps.bp31app.com
+
+  server:
+    # Ingress managed by GitOps (infrastructure/argocd/ingress-argocd.yaml).
+    # Reachable only at argocd.vps.bp31app.com via Pangolin (device/identity gate).
+    ingress:
+      enabled: false
+
+    # Configure URL for SSO redirects
+    url: https://argocd.vps.bp31app.com
+
+    # Run in insecure mode - Cloudflare handles TLS termination
+    extraArgs:
+      - --insecure
+
+  # Authentik OIDC SSO (direct, no Dex)
+  dex:
+    enabled: false
+
+  configs:
+    cm:
+      url: https://argocd.vps.bp31app.com
+
+      # Authentik direct OIDC
+      oidc.config: |
+        name: Authentik
+        issuer: https://auth.vps.bp31app.com/application/o/argocd/
+        clientID: argocd
+        clientSecret: $oidc.authentik.clientSecret
+        requestedScopes:
+          - openid
+          - profile
+          - email
+
+      # Local accounts for non-SSO services
+      accounts.image-updater: apiKey
+
+      # Custom health checks - Ingress is healthy if it exists
+      # (Traefik doesn't always update loadBalancer status)
+      resource.customizations.health.networking.k8s.io_Ingress: |
+        hs = {}
+        hs.status = "Healthy"
+        hs.message = "Ingress is configured"
+        return hs
+
+    # Gitea on gitea-lxc (LXC 143) — ArgoCD syncs over SSH at 192.168.50.44:2222
+    ssh:
+      extraHosts: |
+        [192.168.50.44]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIqyBW5cCoxHz0yCDP+5XehtMokKmTsYKlKA8XhGTvrz
+
+    # RBAC configuration
+    rbac:
+      policy.csv: |
+        g, bpatterson@ark31.info, role:admin
+        p, role:image-updater, applications, get, */*, allow
+        p, role:image-updater, applications, update, */*, allow
+        g, image-updater, role:image-updater
+      policy.default: role:readonly
+
+  # Disable HA for homelab initially to save resources (enable if you have 3+ nodes)
+  controller:
+    replicas: 1
+  applicationSet:
+    replicas: 1
+
+  repoServer:
+    replicas: 1

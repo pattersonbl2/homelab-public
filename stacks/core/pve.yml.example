@@ -1,0 +1,14 @@
+# pve_exporter config — copy this to pve.yml and fill in your credentials
+# pve.yml is gitignored; the deploy playbook copies it to each Docker VM.
+#
+# Create a Proxmox API token:
+#   1. In Proxmox UI: Datacenter > Permissions > Users > Add user: prometheus@pve
+#   2. Datacenter > Permissions > Add > User Permission: prometheus@pve, role PVEAuditor, path /
+#   3. Datacenter > Permissions > API Tokens > Add: user prometheus@pve, token ID monitoring
+#   4. Copy the token value shown (only shown once)
+
+default:
+  user: prometheus@pve!monitoring
+  token_name: monitoring
+  token_value: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  verify_ssl: false

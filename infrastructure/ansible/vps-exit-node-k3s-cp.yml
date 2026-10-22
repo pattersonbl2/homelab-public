@@ -1,0 +1,54 @@
+---
+# VPS: Add as K3s control plane to existing cluster.
+# Assumes the VPS is already on your Tailscale network (exit node set up separately).
+#
+# Prerequisites:
+#   - VPS reachable via Ansible (e.g. Tailscale IP in inventory).
+#   - One existing K3s control plane (e.g. k3s-cp-1) reachable from the VPS (e.g. via Tailscale).
+#   - K3s token: ssh ubuntu@k3s-cp-1 'sudo cat /var/lib/rancher/k3s/server/node-token'
+#
+# Run:
+#   ansible-playbook -i inventory-vps.ini vps-exit-node-k3s-cp.yml \
+#     -e k3s_first_cp_url=https://100.x.x.x:6443 \
+#     -e k3s_token=K10...
+#
+- name: K3s control plane on VPS (join existing cluster)
+  hosts: vps
+  become: yes
+  vars:
+    k3s_version: "v1.28.5+k3s1"  # match terraform-k3s if needed
+
+  tasks:
+    - name: Check K3s join vars
+      ansible.builtin.assert:
+        that:
+          - k3s_first_cp_url is defined
+          - k3s_first_cp_url | length > 0
+          - k3s_token is defined
+          - k3s_token | length > 0
+        fail_msg: "Set k3s_first_cp_url and k3s_token (e.g. -e k3s_first_cp_url=https://100.x.x.x:6443 -e k3s_token=K10...)"
+
+    - name: Install K3s server (join existing cluster)
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" sh -s - server \
+          --server {{ k3s_first_cp_url }} \
+          --token {{ k3s_token }}
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
+      no_log: true
+
+    - name: Wait for K3s to be ready
+      ansible.builtin.wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        state: present
+        timeout: 120
+
+    - name: Show K3s node status
+      ansible.builtin.command: /usr/local/bin/k3s kubectl get nodes -o wide
+      register: k3s_nodes
+      changed_when: false
+
+    - name: Display nodes
+      ansible.builtin.debug:
+        var: k3s_nodes.stdout_lines
+      when: k3s_nodes is defined

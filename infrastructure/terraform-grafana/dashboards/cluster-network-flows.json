@@ -1,0 +1,12 @@
+{
+  "title": "K3s / Hubble Network Flows",
+  "description": "Hubble metrics - traffic heatmap, top talkers, policy drops, DNS queries",
+  "panels": [],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "10s"
+}

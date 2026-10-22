@@ -1,0 +1,36 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki-push.vps.bp31app.com/loki/api/v1/push
+
+scrape_configs:
+  # VPS host syslog / auth logs
+  - job_name: vps-syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: vps
+          host: vps
+          __path__: /var/log/host/{syslog,auth.log,kern.log}
+
+  # VPS Docker container logs
+  - job_name: vps-docker
+    docker_sd_configs:
+      - host: unix:///run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: stream
+      - target_label: job
+        replacement: vps
+      - target_label: host
+        replacement: vps

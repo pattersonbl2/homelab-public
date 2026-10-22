@@ -1,0 +1,68 @@
+---
+# Enable SSO (Authentik) authentication on all Pangolin resources.
+# Runs from localhost — no SSH needed.
+#
+# Prerequisites:
+#   - Authentik identity provider configured in Pangolin
+#   - Pangolin API key with resource update permissions
+#
+# Usage:
+#   ansible-playbook enable-pangolin-sso.yml \
+#     -e pangolin_api_key=<id>.<secret>
+#
+#   To disable SSO on all resources:
+#   ansible-playbook enable-pangolin-sso.yml \
+#     -e pangolin_api_key=<id>.<secret> \
+#     -e sso_enabled=false
+#
+- name: Enable SSO on all Pangolin resources
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    pangolin_api_url: "https://pangolin.vps.bp31app.com/integration/v1"
+    pangolin_org_id: "homelab"
+    sso_enabled: true
+
+  tasks:
+    - name: Validate that pangolin_api_key is set
+      assert:
+        that: pangolin_api_key is defined and pangolin_api_key | length > 0
+        fail_msg: "pangolin_api_key is required. Pass via -e pangolin_api_key=<id>.<secret>"
+
+    - name: GET all resources
+      uri:
+        url: "{{ pangolin_api_url }}/org/{{ pangolin_org_id }}/resources"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: resources_resp
+
+    - name: Display resources found
+      debug:
+        msg: "Found {{ resources_resp.json.data.resources | length }} resources: {{ resources_resp.json.data.resources | map(attribute='name') | list }}"
+
+    - name: Enable SSO on each resource
+      uri:
+        url: "{{ pangolin_api_url }}/resource/{{ item.resourceId }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          sso: "{{ sso_enabled | bool }}"
+        status_code: [200, 201]
+        validate_certs: true
+      loop: "{{ resources_resp.json.data.resources }}"
+      loop_control:
+        label: "{{ item.name }} (resourceId: {{ item.resourceId }})"
+      register: update_results
+
+    - name: Summary
+      debug:
+        msg: "SSO {{ 'enabled' if sso_enabled else 'disabled' }} on {{ resources_resp.json.data.resources | length }} resources"

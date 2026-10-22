@@ -1,0 +1,63 @@
+# ansible/deploy-lxc-veth-watchdog.yml
+#
+# Deploys a self-healing watchdog for the 2026-07-16 outage: ifupdown2
+# drops any LXC veth that isn't declared in /etc/network/interfaces
+# whenever networking.service restarts on a Proxmox node while containers
+# are running (boot race, SDN commit, or manual troubleshooting). The
+# watchdog runs every 2 minutes and reattaches any veth it finds detached
+# from its configured bridge. A pve-guests.service override is included
+# as defense-in-depth for the boot-race case specifically; see
+# ansible/files/pve-guests-network-online.conf for why it isn't sufficient
+# on its own.
+---
+- name: Deploy LXC veth watchdog
+  hosts: proxmox
+  become: yes
+
+  tasks:
+    - name: Copy watchdog script
+      copy:
+        src: ../scripts/lxc-veth-watchdog.sh
+        dest: /usr/local/bin/lxc-veth-watchdog.sh
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install watchdog systemd service
+      copy:
+        src: files/lxc-veth-watchdog.service
+        dest: /etc/systemd/system/lxc-veth-watchdog.service
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Install watchdog systemd timer
+      copy:
+        src: files/lxc-veth-watchdog.timer
+        dest: /etc/systemd/system/lxc-veth-watchdog.timer
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Enable and start watchdog timer
+      systemd:
+        name: lxc-veth-watchdog.timer
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Create pve-guests.service override directory
+      file:
+        path: /etc/systemd/system/pve-guests.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Install pve-guests.service network-online override
+      copy:
+        src: files/pve-guests-network-online.conf
+        dest: /etc/systemd/system/pve-guests.service.d/network-online.conf
+        mode: '0644'
+      notify: reload systemd
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes

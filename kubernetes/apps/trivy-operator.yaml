@@ -1,0 +1,42 @@
+---
+# Trivy Operator for continuous vulnerability scanning
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trivy-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://aquasecurity.github.io/helm-charts
+    chart: trivy-operator
+    targetRevision: 0.28.1
+    helm:
+      releaseName: trivy-operator
+      valuesObject:
+        serviceMonitor:
+          enabled: true
+          labels:
+            release: kube-prometheus-stack
+        trivy:
+          ignoreUnfixed: true
+          severity: CRITICAL,HIGH
+        operator:
+          scanJobTimeout: 5m
+          vulnerabilityReportsPlugin: Trivy
+          configAuditScannerEnabled: true
+          rbacAssessmentScannerEnabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trivy-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

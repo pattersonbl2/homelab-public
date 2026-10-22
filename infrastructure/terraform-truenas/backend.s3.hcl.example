@@ -1,0 +1,12 @@
+# Copy this to backend.s3.hcl (gitignored) and fill in your values.
+# Run: terraform init -backend-config=backend.s3.hcl -reconfigure
+bucket                      = "homelab-tfstate"
+key                         = "terraform-truenas/terraform.tfstate"
+region                      = "auto"
+endpoints                   = { s3 = "https://<ACCOUNT_ID>.r2.cloudflarestorage.com" }
+access_key                  = "<R2_ACCESS_KEY_ID>"
+secret_key                  = "<R2_SECRET_ACCESS_KEY>"
+skip_credentials_validation = true
+skip_metadata_api_check     = true
+skip_region_validation      = true
+force_path_style            = true

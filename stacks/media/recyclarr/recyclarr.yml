@@ -1,0 +1,36 @@
+# Recyclarr configuration — TRaSH-Guides sync for Sonarr & Radarr
+#
+# API keys are injected at deploy time. The deployed copy on media-lxc
+# (/data/recyclarr/recyclarr.yml, mounted at /config in the container) holds the
+# real keys; this repo copy intentionally uses placeholders.
+#
+# Sonarr: WEB-1080p quality profile          (trash_id 72dae194fc92bf828f32cde7744e51a1)
+# Radarr: HD Bluray + WEB / 1080p profile     (trash_id d1d67249d3890e49bc12e275d989a7e9)
+
+sonarr:
+  series:
+    base_url: http://sonarr:8989
+    api_key: !env_var SONARR_API_KEY
+
+    quality_definition:
+      type: series
+
+    quality_profiles:
+      # TRaSH Guides: WEB-1080p
+      - trash_id: 72dae194fc92bf828f32cde7744e51a1
+        reset_unmatched_scores:
+          enabled: true
+
+radarr:
+  movies:
+    base_url: http://radarr:7878
+    api_key: !env_var RADARR_API_KEY
+
+    quality_definition:
+      type: movie
+
+    quality_profiles:
+      # TRaSH Guides: HD Bluray + WEB
+      - trash_id: d1d67249d3890e49bc12e275d989a7e9
+        reset_unmatched_scores:
+          enabled: true

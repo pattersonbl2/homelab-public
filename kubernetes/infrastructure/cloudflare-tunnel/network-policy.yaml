@@ -1,0 +1,61 @@
+---
+# Default deny all ingress (cloudflared is egress-only)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: cloudflare-tunnel
+spec:
+  endpointSelector: {}
+  ingress: []
+---
+# Allow monitoring (Prometheus scraping cloudflared metrics)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: cloudflare-tunnel
+spec:
+  endpointSelector:
+    matchLabels:
+      app: cloudflared
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "2000"
+              protocol: TCP
+---
+# Allow cluster-internal egress (DNS to CoreDNS, K8s API) — matches n8n's pattern.
+# Without this, the default-deny-ingress policy above (plus being referenced as a
+# fromEndpoints peer by argocd's and traefik's ingress policies) causes Cilium to
+# enable BOTH-direction enforcement on this namespace, defaulting egress to deny
+# too. cloudflared then can't even resolve CoreDNS and crashloops on its edge
+# discovery DNS lookup.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cluster-egress
+  namespace: cloudflare-tunnel
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - cluster
+        - host
+---
+# Allow cloudflared egress to the internet (Cloudflare edge for the tunnel itself)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cloudflared-egress
+  namespace: cloudflare-tunnel
+spec:
+  endpointSelector:
+    matchLabels:
+      app: cloudflared
+  egress:
+    - toEntities:
+        - world

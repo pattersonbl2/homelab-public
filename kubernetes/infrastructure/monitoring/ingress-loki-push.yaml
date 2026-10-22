@@ -1,0 +1,24 @@
+---
+# Loki push ingress for VPS promtail
+# Traffic arrives via Pangolin -> Newt -> K3s Traefik -> loki-stack:3100
+# VPS promtail pushes to: http://loki-push.vps.bp31app.com/loki/api/v1/push
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: loki-push-vps
+  namespace: monitoring
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: loki-push.vps.bp31app.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: loki-stack
+            port:
+              number: 3100

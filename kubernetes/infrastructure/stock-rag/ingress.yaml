@@ -1,0 +1,23 @@
+---
+# Expose Ollama API via Pangolin -> Newt -> K3s Traefik
+# Docker Open WebUI connects to this as a second Ollama backend
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ollama
+  namespace: stock-rag
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: ollama.vps.bp31app.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ollama
+            port:
+              number: 11434

@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: renovate
+  namespace: renovate
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: renovate
+              image: renovate/renovate:39
+              env:
+                - name: RENOVATE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-secret
+                      key: gitea-token
+                - name: RENOVATE_PLATFORM
+                  value: gitea
+                # 2026-07-09: was https://gitea.bp31app.com — that hostname now
+                # dead-ends at the K3s Traefik wildcard (404) after the in-cluster
+                # Gitea was decommissioned, so Renovate failed with "Authentication
+                # failure". Point straight at the live gitea-lxc (LXC 143) where the
+                # renovate token is valid. Reachable from pods via VyOS LAN routing.
+                - name: RENOVATE_ENDPOINT
+                  value: http://192.168.50.44:3000
+                - name: RENOVATE_GIT_AUTHOR
+                  value: "Renovate Bot <renovate@bp31app.com>"
+                - name: RENOVATE_AUTODISCOVER
+                  value: "true"
+                - name: LOG_LEVEL
+                  value: info
+                - name: RENOVATE_CONFIG_FILE
+                  value: /usr/src/app/renovate.json
+              volumeMounts:
+                - name: config
+                  mountPath: /usr/src/app/renovate.json
+                  subPath: renovate.json
+          volumes:
+            - name: config
+              configMap:
+                name: renovate-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: renovate-config
+  namespace: renovate
+data:
+  renovate.json: |
+    {
+      "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+      "platform": "gitea",
+      "endpoint": "http://192.168.50.44:3000",
+      "extends": ["config:recommended"],
+      "packageRules": [
+        {
+          "matchUpdateTypes": ["patch", "pin", "digest"],
+          "automerge": true
+        },
+        {
+          "matchManagers": ["docker-compose"],
+          "matchUpdateTypes": ["major"],
+          "automerge": false,
+          "labels": ["renovate", "major"]
+        },
+        {
+          "matchManagers": ["helm-values"],
+          "automerge": false,
+          "labels": ["renovate", "helm"]
+        }
+      ],
+      "prHourlyLimit": 4,
+      "prConcurrentLimit": 10
+    }

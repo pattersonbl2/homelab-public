@@ -1,0 +1,53 @@
+---
+# Loki + Promtail log aggregation stack
+# Loki collects logs, Promtail ships pod logs from all nodes
+# Grafana (from kube-prometheus-stack) uses Loki as a datasource
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki-stack
+    targetRevision: 2.10.2
+    helm:
+      releaseName: loki-stack
+      valuesObject:
+        loki:
+          enabled: true
+          # Don't mark Loki as default datasource — Prometheus is default
+          isDefault: false
+          persistence:
+            enabled: true
+            size: 10Gi
+          config:
+            # Retention: 7 days (homelab — short retention by policy)
+            table_manager:
+              retention_deletes_enabled: true
+              retention_period: 168h
+        promtail:
+          enabled: true
+          config:
+            clients:
+              - url: http://loki-stack:3100/loki/api/v1/push
+        # Disable bundled Grafana/Prometheus - we use kube-prometheus-stack
+        grafana:
+          enabled: false
+        prometheus:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

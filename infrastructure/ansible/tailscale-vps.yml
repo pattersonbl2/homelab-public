@@ -1,0 +1,66 @@
+---
+# Install Tailscale on a VPS so it joins your Tailnet and can reach the homelab
+# (and homelab can reach the VPS). No subnet router or IP forwarding.
+#
+# Usage:
+#   1. Add the VPS to inventory, e.g.:
+#        [vps_tailscale]
+#        my-vps ansible_host=203.0.113.10 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_ed25519
+#   2. Run: ansible-playbook -i inventory.ini tailscale-vps.yml -e tailscale_auth_key=tskey-auth-XXX
+#
+- name: Install Tailscale on VPS
+  hosts: vps_tailscale
+  become: yes
+  vars:
+    tailscale_exit_node: false  # set true and approve in admin if you want VPS as exit node
+
+  tasks:
+    - name: Install Tailscale dependencies
+      apt:
+        name: ["curl", "ca-certificates", "gnupg"]
+        state: present
+        update_cache: yes
+
+    - name: Add Tailscale package signing key and repository
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
+      args:
+        creates: /etc/apt/sources.list.d/tailscale.list
+
+    - name: Install Tailscale
+      apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+
+    - name: Enable and start Tailscale
+      systemd:
+        name: tailscaled
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Wait for tailscaled socket
+      ansible.builtin.wait_for:
+        path: /var/run/tailscale/tailscaled.sock
+        state: present
+        timeout: 15
+      ignore_errors: true
+
+    - name: Join Tailscale (with auth key)
+      ansible.builtin.command: "tailscale up --authkey={{ tailscale_auth_key }}{{ ' --advertise-exit-node' if tailscale_exit_node else '' }}"
+      register: tailscale_up
+      changed_when: "'Success' in tailscale_up.stdout or tailscale_up.rc == 0"
+      when: tailscale_auth_key is defined and tailscale_auth_key | length > 0
+
+    - name: Show Tailscale status
+      command: tailscale status
+      register: tailscale_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display Tailscale status
+      ansible.builtin.debug:
+        var: tailscale_status.stdout_lines
+      when: tailscale_status.rc == 0

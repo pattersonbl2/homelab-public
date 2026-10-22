@@ -1,0 +1,23 @@
+---
+# ArgoCD Self-Management
+# ArgoCD manages its own Helm chart deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ssh://git@192.168.50.44:2222/bp31/mono-homelab.git
+    targetRevision: HEAD
+    path: kubernetes/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: false
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,84 @@
+---
+# Install and configure Tailscale on the LXC subnet router (tailscale-1).
+# Run after Terraform creates the container:
+#   ansible-playbook -i inventory.ini tailscale.yml -e tailscale_auth_key=tskey-auth-xxx -e tailscale_advertise_routes=192.168.50.0/24
+# Or set group_vars/tailscale.yml (tailscale_auth_key, tailscale_advertise_routes).
+- name: Install Tailscale subnet router
+  hosts: tailscale
+  become: yes
+  vars:
+    tailscale_advertise_routes: "192.168.50.0/24"  # override with -e or group_vars
+
+  tasks:
+    - name: Install Tailscale dependencies
+      apt:
+        name: ["curl", "ca-certificates", "gnupg"]
+        state: present
+        update_cache: yes
+
+    - name: Add Tailscale package signing key and repository
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
+      args:
+        creates: /etc/apt/sources.list.d/tailscale.list
+
+    - name: Install Tailscale
+      apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+
+    - name: Enable IP forwarding (required for subnet router to reach LAN)
+      sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-tailscale-forwarding.conf
+        reload: true
+      loop:
+        - net.ipv4.ip_forward
+        - net.ipv6.conf.all.forwarding
+
+    - name: Enable and start Tailscale
+      systemd:
+        name: tailscaled
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Wait for tailscaled to be ready (optional; tailscale up can start it)
+      ansible.builtin.wait_for:
+        path: /var/run/tailscale/tailscaled.sock
+        state: present
+        timeout: 10
+      ignore_errors: true
+
+    - name: Build tailscale up args
+      ansible.builtin.set_fact:
+        tailscale_up_args: >-
+          --advertise-routes={{ tailscale_advertise_routes }}
+          --accept-routes
+          {{ '--authkey=' ~ tailscale_auth_key if (tailscale_auth_key is defined and tailscale_auth_key | length > 0) else '' }}
+
+    - name: Join Tailscale / advertise subnet
+      ansible.builtin.command: "tailscale up {{ tailscale_up_args }}"
+      register: tailscale_up
+      changed_when: "'Success' in tailscale_up.stdout or tailscale_up.rc == 0"
+      failed_when: tailscale_up.rc != 0 and 'already in use' not in (tailscale_up.stderr | default(''))
+      when: tailscale_auth_key is defined and tailscale_auth_key | length > 0
+
+    - name: Show Tailscale status
+      command: tailscale status
+      register: tailscale_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display Tailscale status
+      ansible.builtin.debug:
+        var: tailscale_status.stdout_lines
+      when: tailscale_status.rc == 0
+
+    - name: Remind to approve subnet route in Tailscale admin
+      ansible.builtin.debug:
+        msg: "If you can't reach LAN devices (homelab-1, Jellyfin): go to https://login.tailscale.com/admin/machines → tailscale-1 → Edit route settings → Approve {{ tailscale_advertise_routes }}"

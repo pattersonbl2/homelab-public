@@ -1,0 +1,12 @@
+# TrueNAS SCALE connection
+# Create an API key in TrueNAS: System > API Keys (allow pool.dataset for dataset creation)
+truenas_host      = "https://192.168.50.10"
+truenas_api_token = "your-api-token-here"
+
+# Datasets to create (full path under a pool)
+# Nested paths are created when create_parents = true
+datasets = [
+  "tank/homelab",
+  "tank/homelab/nfs",
+  "tank/backups",
+]

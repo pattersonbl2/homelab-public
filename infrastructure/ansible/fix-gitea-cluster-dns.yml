@@ -1,0 +1,48 @@
+---
+# gitea.bp31app.com was reachable from inside K3s until the K3s-hosted Gitea
+# was decommissioned (2026-07-08). Since then, every K3s node/pod resolves it
+# via VyOS -> public DNS -> Cloudflare's edge, which 404s (no tunnel ingress
+# rule for that host) instead of reaching the real Gitea. That silently broke
+# argocd-image-updater's registry checks and any node's ability to pull
+# gitea.bp31app.com/* images once its cached copy aged out (surfaced 2026-07-31
+# as k8s-learn-agent ImagePullBackOff on new pods).
+#
+# Fix: point gitea.bp31app.com at Traefik (192.168.50.33), which already
+# terminates valid TLS for that hostname via the existing LAN split-horizon
+# Pi-hole setup. Node-level /etc/hosts covers containerd image pulls;
+# coredns-custom covers in-cluster pod DNS (CoreDNS forwards to the node's
+# own resolv.conf, so /etc/hosts alone doesn't cover pods).
+#
+# Usage: ansible-playbook -i k3s-inventory.ini fix-gitea-cluster-dns.yml
+- name: Add gitea.bp31app.com hosts entry on all K3s nodes
+  hosts: k3s
+  become: yes
+  tasks:
+    - name: Ensure gitea.bp31app.com resolves to Traefik
+      lineinfile:
+        path: /etc/hosts
+        regexp: '\sgitea\.bp31app\.com$'
+        line: "192.168.50.33 gitea.bp31app.com"
+        state: present
+
+- name: Apply CoreDNS override for gitea.bp31app.com
+  hosts: k3s_cp[0]
+  become: yes
+  tasks:
+    - name: Copy coredns-custom manifest
+      copy:
+        src: files/coredns-custom.yaml
+        dest: /tmp/coredns-custom.yaml
+        mode: "0644"
+
+    - name: Apply coredns-custom ConfigMap
+      command: kubectl apply -f /tmp/coredns-custom.yaml
+      changed_when: true
+
+    - name: Restart CoreDNS to pick up custom config
+      command: kubectl -n kube-system rollout restart deployment coredns
+      changed_when: true
+
+    - name: Wait for CoreDNS rollout to finish
+      command: kubectl -n kube-system rollout status deployment coredns --timeout=60s
+      changed_when: false

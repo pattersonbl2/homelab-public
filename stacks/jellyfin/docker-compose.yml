@@ -1,0 +1,19 @@
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:10.11.11ubu2404-ls38
+    container_name: jellyfin
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+    volumes:
+      - /data/jellyfin:/config
+      - /mnt/arr:/media:ro
+    ports:
+      - "8096:8096"
+      - "1900:1900/udp"
+      - "7359:7359/udp"
+    restart: unless-stopped

@@ -1,0 +1,15 @@
+filenames:
+  - /var/log/traefik/access.log
+labels:
+  type: traefik
+---
+filenames:
+  - /var/log/host/auth.log
+  - /var/log/host/syslog
+labels:
+  type: syslog
+---
+filenames:
+  - /var/log/host/auth.log
+labels:
+  type: linux

@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cka-coach-sa
+  namespace: cka-coach
+---
+# Full access to the sandbox namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cka-coach-sandbox-admin
+  namespace: cka-bp31
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cka-coach-sandbox-admin
+  namespace: cka-bp31
+subjects:
+- kind: ServiceAccount
+  name: cka-coach-sa
+  namespace: cka-coach
+roleRef:
+  kind: Role
+  name: cka-coach-sandbox-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+# Minimal cluster-level access for node-labeling scenarios
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cka-coach-node-reader
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cka-coach-node-reader
+subjects:
+- kind: ServiceAccount
+  name: cka-coach-sa
+  namespace: cka-coach
+roleRef:
+  kind: ClusterRole
+  name: cka-coach-node-reader
+  apiGroup: rbac.authorization.k8s.io

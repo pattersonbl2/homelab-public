@@ -1,0 +1,72 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy
+  namespace: ntfy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ntfy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: ntfy
+    spec:
+      initContainers:
+        - name: setup-acls
+          image: binwiederhier/ntfy:v2.28.0
+          command:
+            - sh
+            - -c
+            - |
+              ntfy access --auth-file /var/cache/ntfy/auth.db '*' 'homelab-alerts' write || true
+              ntfy access --auth-file /var/cache/ntfy/auth.db '*' 'uptime-alerts' write || true
+              ntfy access --auth-file /var/cache/ntfy/auth.db '*' 'k8s-learn' write || true
+              # Token-based access (users + tokens are created by hand, see PR #43).
+              # These no-op until the users exist.
+              ntfy access --auth-file /var/cache/ntfy/auth.db alerts-publisher 'homelab-*' write-only || true
+              ntfy access --auth-file /var/cache/ntfy/auth.db alerts-publisher 'uptime-alerts' write-only || true
+              ntfy access --auth-file /var/cache/ntfy/auth.db bp31 'homelab-*' read-only || true
+              ntfy access --auth-file /var/cache/ntfy/auth.db bp31 'uptime-alerts' read-only || true
+              ntfy access --auth-file /var/cache/ntfy/auth.db bp31 'brain' read-only || true
+          volumeMounts:
+            - name: data
+              mountPath: /var/cache/ntfy
+      containers:
+        - name: ntfy
+          image: binwiederhier/ntfy:v2.28.0
+          args:
+            - serve
+          env:
+            - name: NTFY_BASE_URL
+              value: "https://ntfy.bp31app.com"
+            - name: NTFY_CACHE_FILE
+              value: "/var/cache/ntfy/cache.db"
+            - name: NTFY_AUTH_FILE
+              value: "/var/cache/ntfy/auth.db"
+            - name: NTFY_AUTH_DEFAULT_ACCESS
+              value: "deny-all"
+            - name: NTFY_BEHIND_PROXY
+              value: "true"
+            - name: NTFY_ATTACHMENT_CACHE_DIR
+              value: "/var/cache/ntfy/attachments"
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: data
+              mountPath: /var/cache/ntfy
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 250m
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ntfy-data

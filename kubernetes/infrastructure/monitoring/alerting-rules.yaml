@@ -1,0 +1,267 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: homelab.nodes
+      rules:
+        - alert: NodeDown
+          expr: up{job=~"node-exporter|docker-node|vps-node"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node {{ $labels.instance }} is down"
+            description: "Node {{ $labels.instance }} has been unreachable for more than 2 minutes."
+
+        - alert: NodeDiskUsageWarning
+          expr: |
+            (
+              1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"} /
+                   node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"})
+            ) > 0.80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Disk usage > 80% on {{ $labels.instance }}"
+            description: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full."
+
+        - alert: NodeDiskUsageCritical
+          expr: |
+            (
+              1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"} /
+                   node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"})
+            ) > 0.90
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Disk usage > 90% on {{ $labels.instance }}"
+            description: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full. Immediate action required."
+
+        - alert: NodeMemoryUsageWarning
+          expr: |
+            (
+              1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+            ) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Memory usage > 85% on {{ $labels.instance }}"
+            description: "Node {{ $labels.instance }} memory usage is {{ $value | humanizePercentage }}."
+
+    - name: homelab.kubernetes
+      rules:
+        - alert: PodCrashLoopBackOff
+          expr: |
+            kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is in CrashLoopBackOff"
+            description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} has been in CrashLoopBackOff for more than 5 minutes."
+
+        - alert: PodNotReady
+          expr: |
+            sum by (namespace, pod) (
+              max by (namespace, pod, condition) (kube_pod_status_conditions{condition="Ready",status="true"}) == 0
+            ) * on (namespace, pod) group_left (owner_kind) (
+              max by (namespace, pod, owner_kind) (kube_pod_owner{owner_kind!="Job"})
+            )
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been not ready for 15 minutes"
+            description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready."
+
+    - name: homelab.vyos
+      rules:
+        - alert: VyOSDown
+          expr: up{job="vyos-snmp"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "VyOS router is unreachable"
+            description: "SNMP target vyos-gw has been unreachable for more than 2 minutes."
+
+        - alert: BGPPeerDown
+          expr: bgpPeerState{job="vyos-snmp"} != 6
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "BGP peer {{ $labels.bgpPeerRemoteAddr }} is down"
+            description: "BGP peer {{ $labels.bgpPeerRemoteAddr }} on VyOS is not in established state (6). Current state: {{ $value }}."
+
+        - alert: VyOSHighCPU
+          expr: hrProcessorLoad{job="vyos-snmp"} > 90
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "VyOS CPU usage > 90%"
+            description: "VyOS router CPU has been above 90% for 5 minutes. Current: {{ $value }}%."
+
+        - alert: VyOSHighMemory
+          expr: (1 - hrStorageUsed{hrStorageDescr="Physical memory",job="vyos-snmp"} / hrStorageSize{hrStorageDescr="Physical memory",job="vyos-snmp"}) < 0.10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "VyOS memory usage > 90%"
+            description: "VyOS router has less than 10% memory available for 5 minutes."
+
+        - alert: WANInterfaceDown
+          expr: ifOperStatus{job="vyos-snmp",ifDescr="eth0"} != 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "VyOS WAN interface (eth0) is down"
+            description: "VyOS eth0 (WAN) operational status is not up. Lab has no internet connectivity."
+
+    - name: homelab.infrastructure
+      rules:
+        - alert: LonghornVolumeHealth
+          expr: longhorn_volume_robustness == 2 or longhorn_volume_robustness == 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} is degraded/faulted"
+            description: "Volume {{ $labels.volume }} robustness is {{ $value }} (2=degraded, 3=faulted)."
+
+        - alert: LonghornNodeDown
+          expr: longhorn_node_status{condition="ready"} != 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn node {{ $labels.node }} is not ready"
+            description: "Longhorn storage node {{ $labels.node }} has been not ready for 5 minutes."
+
+        - alert: TraefikHighErrorRate
+          expr: |
+            (
+              sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) /
+              sum(rate(traefik_service_requests_total[5m]))
+            ) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Traefik 5xx error rate > 5%"
+            description: "Traefik has been returning more than 5% server errors for 10 minutes."
+
+        - alert: TraefikCertExpiring
+          expr: (traefik_tls_certs_not_after - time()) / 86400 < 7
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "TLS certificate expiring within 7 days"
+            description: "A Traefik TLS certificate expires in {{ $value | humanize }} days."
+
+        - alert: HighPodRestarts
+          expr: increase(kube_pod_container_status_restarts_total[15m]) > 5
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times"
+            description: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} has restarted more than 5 times in 15 minutes."
+
+        - alert: PersistentVolumeAlmostFull
+          expr: |
+            (
+              kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes
+            ) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is > 85% full"
+            description: "Persistent volume claim {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} is {{ $value | humanizePercentage }} full."
+
+        - alert: ArgoAppOutOfSync
+          expr: argocd_app_info{sync_status!="Synced"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD app {{ $labels.name }} is out of sync"
+            description: "App {{ $labels.name }} has been out of sync for 15 minutes. Status: {{ $labels.sync_status }}."
+
+        - alert: ArgoAppDegraded
+          expr: argocd_app_info{health_status!="Healthy",health_status!="Progressing"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ArgoCD app {{ $labels.name }} is degraded"
+            description: "App {{ $labels.name }} health is {{ $labels.health_status }} for 5 minutes."
+
+    - name: homelab.vps-docker
+      rules:
+        - alert: PangolinMemoryHigh
+          expr: |
+            container_memory_usage_bytes{job="docker-cadvisor",name="pangolin"}
+            / container_spec_memory_limit_bytes{job="docker-cadvisor",name="pangolin"} > 0.80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pangolin memory usage > 80%"
+            description: "Pangolin container on VPS is at {{ $value | humanizePercentage }} of its memory limit."
+
+        - alert: AuthentikMemoryHigh
+          expr: |
+            container_memory_usage_bytes{job="docker-cadvisor",name="authentik-server"}
+            / container_spec_memory_limit_bytes{job="docker-cadvisor",name="authentik-server"} > 0.80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Authentik memory usage > 80%"
+            description: "Authentik server container on VPS is at {{ $value | humanizePercentage }} of its memory limit."
+
+        - alert: CrowdSecMemoryHigh
+          expr: |
+            container_memory_usage_bytes{job="docker-cadvisor",name="crowdsec"}
+            / container_spec_memory_limit_bytes{job="docker-cadvisor",name="crowdsec"} > 0.80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CrowdSec memory usage > 80%"
+            description: "CrowdSec container on VPS is at {{ $value | humanizePercentage }} of its memory limit."
+
+    - name: homelab.network
+      rules:
+        - alert: HubblePolicyDropsHigh
+          expr: sum(rate(hubble_drop_total[5m])) > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Cilium policy drop rate"
+            description: "More than 100 policy drops per second sustained for 5 minutes."
+
+        - alert: HighOutboundTraffic
+          expr: rate(ifHCOutOctets{job="vyos-snmp",ifDescr="eth0"}[5m]) * 8 > 100000000
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "VyOS WAN outbound traffic > 100Mbps sustained"
+            description: "Outbound traffic on eth0 has exceeded 100Mbps for 15 minutes."

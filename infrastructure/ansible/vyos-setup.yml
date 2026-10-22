@@ -1,0 +1,203 @@
+---
+- name: Configure VyOS Router for Homelab SDN
+  hosts: vyos_routers
+  gather_facts: no
+  connection: ansible.netcommon.network_cli
+
+  tasks:
+    - name: Configure interfaces
+      vyos.vyos.vyos_config:
+        lines:
+          - set interfaces ethernet eth0 address 192.168.50.18/24
+          - set interfaces ethernet eth0 description 'WAN - vmbr0'
+          - set interfaces ethernet eth1 address 10.10.10.1/24
+          - set interfaces ethernet eth1 description 'LAN - vmbr1 (pve-pve2 link)'
+          # MTU 1500 to match Proxmox bridge default
+          - set interfaces ethernet eth0 mtu '1500'
+          - set interfaces ethernet eth1 mtu '1500'
+        save: yes
+
+    - name: Configure routing
+      vyos.vyos.vyos_config:
+        lines:
+          - set protocols static route 0.0.0.0/0 next-hop 192.168.50.1
+        save: yes
+
+    - name: Configure NAT
+      vyos.vyos.vyos_config:
+        lines:
+          - set nat source rule 100 outbound-interface name 'eth0'
+          - set nat source rule 100 source address '10.10.10.0/24'
+          - set nat source rule 100 translation address 'masquerade'
+        save: yes
+
+
+    # VyOS 1.4+/rolling uses interface-based firewall instead of zones
+    - name: Configure WAN inbound firewall (protect from internet)
+      vyos.vyos.vyos_config:
+        lines:
+          # WAN-IN: Traffic from internet to LAN - only established/related
+          - set firewall ipv4 name WAN-IN default-action 'drop'
+          - set firewall ipv4 name WAN-IN rule 10 action 'accept'
+          - set firewall ipv4 name WAN-IN rule 10 state 'established'
+          - set firewall ipv4 name WAN-IN rule 10 description 'Allow established'
+          - set firewall ipv4 name WAN-IN rule 20 action 'accept'
+          - set firewall ipv4 name WAN-IN rule 20 state 'related'
+          - set firewall ipv4 name WAN-IN rule 20 description 'Allow related'
+          - set firewall ipv4 name WAN-IN rule 100 action 'accept'
+          - set firewall ipv4 name WAN-IN rule 100 protocol 'tcp'
+          - set firewall ipv4 name WAN-IN rule 100 destination port '22,6443'
+          - set firewall ipv4 name WAN-IN rule 100 source address '192.168.50.0/24'
+          - set firewall ipv4 name WAN-IN rule 100 description 'Allow SSH/K3s from home network'
+        save: yes
+
+    - name: Configure WAN local firewall (protect router from WAN)
+      vyos.vyos.vyos_config:
+        lines:
+          # WAN-LOCAL: Traffic from internet to router itself
+          - set firewall ipv4 name WAN-LOCAL default-action 'drop'
+          - set firewall ipv4 name WAN-LOCAL rule 10 action 'accept'
+          - set firewall ipv4 name WAN-LOCAL rule 10 state 'established'
+          - set firewall ipv4 name WAN-LOCAL rule 10 description 'Allow established'
+          - set firewall ipv4 name WAN-LOCAL rule 20 action 'accept'
+          - set firewall ipv4 name WAN-LOCAL rule 20 state 'related'
+          - set firewall ipv4 name WAN-LOCAL rule 20 description 'Allow related'
+          - set firewall ipv4 name WAN-LOCAL rule 100 action 'accept'
+          - set firewall ipv4 name WAN-LOCAL rule 100 protocol 'tcp'
+          - set firewall ipv4 name WAN-LOCAL rule 100 destination port '22'
+          - set firewall ipv4 name WAN-LOCAL rule 100 source address '192.168.50.0/24'
+          - set firewall ipv4 name WAN-LOCAL rule 100 description 'SSH from home network'
+        save: yes
+
+    - name: Configure LAN firewall (allow all from K3s VMs)
+      vyos.vyos.vyos_config:
+        lines:
+          # LAN-IN: Traffic from LAN to internet - allow all (K3s needs apt, curl, registry)
+          - set firewall ipv4 name LAN-IN default-action 'accept'
+          - set firewall ipv4 name LAN-IN rule 10 action 'accept'
+          - set firewall ipv4 name LAN-IN rule 10 description 'Allow all from LAN'
+          # LAN-LOCAL: Traffic from LAN to router - allow all (DNS, DHCP, SSH)
+          - set firewall ipv4 name LAN-LOCAL default-action 'accept'
+          - set firewall ipv4 name LAN-LOCAL rule 10 action 'accept'
+          - set firewall ipv4 name LAN-LOCAL rule 10 description 'Allow all from LAN to router'
+        save: yes
+
+    # VyOS 2026 rolling uses filter chains instead of interface bindings
+    # Traffic flows through forward/input/output chains automatically with NAT
+    - name: Configure forward filter (allow LAN to WAN)
+      vyos.vyos.vyos_config:
+        lines:
+          # Default policies - allow all since NAT handles the routing
+          - set firewall ipv4 forward filter default-action 'accept'
+          - set firewall ipv4 input filter default-action 'accept'
+          - set firewall ipv4 output filter default-action 'accept'
+        save: yes
+
+    - name: Configure DHCP server
+      vyos.vyos.vyos_config:
+        lines:
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 subnet-id '1'
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 option default-router '10.10.10.1'
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 option name-server '10.10.10.1'
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 lease '86400'
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 range 0 start '10.10.10.100'
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 range 0 stop '10.10.10.200'
+          # MTU 1500
+          - set service dhcp-server shared-network-name LAB subnet 10.10.10.0/24 option interface-mtu '1500'
+        save: yes
+
+    - name: Configure DNS forwarding
+      vyos.vyos.vyos_config:
+        lines:
+          - set service dns forwarding listen-address '10.10.10.1'
+          - set service dns forwarding allow-from '10.10.10.0/24'
+          - set service dns forwarding name-server '1.1.1.1'
+          - set service dns forwarding name-server '8.8.8.8'
+        save: yes
+
+    - name: Configure TCP MSS clamping
+      vyos.vyos.vyos_config:
+        lines:
+          - set interfaces ethernet eth0 ip adjust-mss 1350
+          - set interfaces ethernet eth1 ip adjust-mss 1350
+        save: yes
+
+    - name: Configure BGP peering with K3s nodes (Cilium)
+      vyos.vyos.vyos_config:
+        lines:
+          - set protocols bgp system-as '65000'
+          - set protocols bgp neighbor 10.10.10.11 remote-as '65001'
+          - set protocols bgp neighbor 10.10.10.11 description 'k3s-cp-1'
+          - set protocols bgp neighbor 10.10.10.12 remote-as '65001'
+          - set protocols bgp neighbor 10.10.10.12 description 'k3s-cp-2'
+          - set protocols bgp neighbor 10.10.10.21 remote-as '65001'
+          - set protocols bgp neighbor 10.10.10.21 description 'k3s-worker-1'
+          - set protocols bgp neighbor 10.10.10.22 remote-as '65001'
+          - set protocols bgp neighbor 10.10.10.22 description 'k3s-worker-2'
+          - set protocols bgp neighbor 10.10.10.11 address-family ipv4-unicast
+          - set protocols bgp neighbor 10.10.10.12 address-family ipv4-unicast
+          - set protocols bgp neighbor 10.10.10.21 address-family ipv4-unicast
+          - set protocols bgp neighbor 10.10.10.22 address-family ipv4-unicast
+          - set protocols bgp address-family ipv4-unicast network 10.10.10.0/24
+        save: yes
+
+    - name: Configure LAN-LOCAL firewall rule for BGP (TCP 179)
+      vyos.vyos.vyos_config:
+        lines:
+          - set firewall ipv4 name LAN-LOCAL rule 20 action 'accept'
+          - set firewall ipv4 name LAN-LOCAL rule 20 protocol 'tcp'
+          - set firewall ipv4 name LAN-LOCAL rule 20 destination port '179'
+          - set firewall ipv4 name LAN-LOCAL rule 20 source address '10.10.10.0/24'
+          - set firewall ipv4 name LAN-LOCAL rule 20 description 'Allow BGP from K3s nodes'
+        save: yes
+
+    - name: Configure SSH and system
+      vyos.vyos.vyos_config:
+        lines:
+          - set service ssh port '22'
+          - set system host-name 'vyos-gw'
+          - set system time-zone 'America/Toronto'
+        save: yes
+
+    - name: Load WireGuard vars
+      community.sops.load_vars:
+        file: vars/wireguard.sops.yaml
+
+    - name: Configure WireGuard interface
+      vyos.vyos.vyos_config:
+        lines:
+          - set interfaces wireguard wg01 address '10.10.11.1/24'
+          - set interfaces wireguard wg01 description 'WireGuard VPN'
+          - set interfaces wireguard wg01 port '51820'
+          - set interfaces wireguard wg01 private-key '{{ wireguard_vyos_private_key }}'
+          - set interfaces wireguard wg01 peer mac-client public-key '{{ wireguard_mac_public_key }}'
+          - set interfaces wireguard wg01 peer mac-client allowed-ips '10.10.11.2/32'
+        save: yes
+
+    - name: Configure WireGuard firewall rules
+      vyos.vyos.vyos_config:
+        lines:
+          # Allow WireGuard UDP on WAN from home network
+          - set firewall ipv4 name WAN-LOCAL rule 110 action 'accept'
+          - set firewall ipv4 name WAN-LOCAL rule 110 protocol 'udp'
+          - set firewall ipv4 name WAN-LOCAL rule 110 destination port '51820'
+          - set firewall ipv4 name WAN-LOCAL rule 110 source address '192.168.50.0/24'
+          - set firewall ipv4 name WAN-LOCAL rule 110 description 'Allow WireGuard from home'
+        save: yes
+
+    - name: Load SNMP vars
+      community.sops.load_vars:
+        file: vars/snmp.sops.yaml
+
+    - name: Configure SNMP
+      vyos.vyos.vyos_config:
+        lines:
+          - set service snmp community '{{ snmp_community }}' authorization 'ro'
+          - set service snmp listen-address '10.10.10.1'
+          - set service snmp location 'Homelab'
+          - set service snmp contact 'bp31'
+        save: yes
+
+    # NOTE: flow-accounting (NetFlow) is not available on this VyOS build.
+    # To enable later, install pmacct package or use a VyOS image that includes it.
+    # goflow2 collector is ready at 192.168.50.97:2055 once NetFlow is enabled.

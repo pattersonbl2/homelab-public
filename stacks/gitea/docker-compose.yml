@@ -1,0 +1,85 @@
+services:
+  gitea:
+    image: gitea/gitea:1.23
+    container_name: gitea
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    environment:
+      - TZ=America/New_York
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=postgres
+      - GITEA__database__HOST=192.168.50.15:5432
+      - GITEA__database__NAME=gitea
+      - GITEA__database__USER=gitea
+      - GITEA__database__PASSWD=${GITEA_DB_PASS}
+      # Canonical domain stays gitea.bp31app.com: registry image refs
+      # (gitea.bp31app.com/bp31/*) and WebAuthn credentials are bound to it.
+      # gitea.local.bp31app.com remains a secondary route via proxy-lxc Traefik.
+      - GITEA__server__DOMAIN=gitea.bp31app.com
+      - GITEA__server__ROOT_URL=https://gitea.bp31app.com
+      - GITEA__server__SSH_DOMAIN=gitea.bp31app.com
+      - GITEA__server__HTTP_PORT=3000
+      # Root image runs OpenSSH sshd; built-in server would clash on :22.
+      # After DB restores/imports run `gitea admin regenerate keys` so
+      # /data/git/.ssh/authorized_keys matches the public_key table.
+      - GITEA__server__START_SSH_SERVER=false
+      - GITEA__mailer__ENABLED=true
+      - GITEA__mailer__PROTOCOL=smtp+starttls
+      - GITEA__mailer__SMTP_ADDR=${SMTP_HOST}
+      - GITEA__mailer__SMTP_PORT=${SMTP_PORT}
+      - GITEA__mailer__FROM=${SMTP_FROM}
+      - GITEA__mailer__USER=${SMTP_USERNAME}
+      - GITEA__mailer__PASSWD=${SMTP_PASSWORD}
+    volumes:
+      - /data/gitea:/data
+    ports:
+      - 3000:3000
+      - 2222:22
+
+  # Nightly backup into the same restic flow as stacks/backup (dockerhost-lxc):
+  # pg_dump of the gitea DB from db-1 + restic snapshot of /data/gitea, into a
+  # dedicated repo on the /media/backup ZFS pool on autobots. The pool dir is
+  # bind-mounted into the LXC via a pct mount point:
+  #   pct set 143 -mp0 /media/backup/gitea-lxc,mp=/mnt/backup/gitea-lxc
+  # Cron is in UTC (03:15 UTC = 23:15 ET), staggered after the dockerhost run.
+  gitea-backup:
+    image: restic/restic:0.19.1
+    container_name: gitea-backup
+    # LXC 143's inherited upstream DNS (1.1.1.1 / router) times out on UDP, which
+    # makes the apk add below fail at container start; use Pi-hole instead.
+    dns:
+      - 192.168.50.20
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache bash dcron postgresql17-client curl
+        echo "15 3 * * * /bin/bash /scripts/backup.sh >> /var/log/backup.log 2>&1" | crontab -
+        crond -f -l 2
+    environment:
+      - RESTIC_REPOSITORY=/mnt/backup/gitea-lxc/restic
+      - RESTIC_PASSWORD=${RESTIC_PASSWORD:?RESTIC_PASSWORD is required}
+      - PGHOST=192.168.50.15
+      - PGUSER=gitea
+      - PGDATABASE=gitea
+      - PGPASSWORD=${GITEA_DB_PASS}
+      # Optional: ntfy access token for failure alerts (empty = anonymous post)
+      - NTFY_TOKEN=${NTFY_TOKEN:-}
+    volumes:
+      - ./backup.sh:/scripts/backup.sh:ro
+      - /data/gitea:/data/gitea:ro
+      - /mnt/backup:/mnt/backup
+      # .env holds the only copy of the DB/SMTP secrets - back it up too,
+      # same as the dockerhost flow does with stacks/env
+      - ./.env:/env-file/env:ro
+      - db-dumps:/dumps
+
+volumes:
+  db-dumps:
+    name: gitea-db-dumps

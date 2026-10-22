@@ -1,0 +1,7 @@
+---
+# Ansible collections baked into the custom Semaphore image (see Dockerfile).
+# Required for the proxmox_pct_remote connection and the db-lxc playbook.
+collections:
+  - name: community.general
+    version: "==10.3.0"
+  - name: community.postgresql

@@ -1,0 +1,146 @@
+# DevOps Tools Brewfile
+# Install with: brew bundle
+
+# Infrastructure as Code
+brew "terraform"
+brew "terragrunt"
+brew "pulumi"
+brew "ansible"
+brew "packer"
+brew "vagrant"
+
+# Container Tools
+brew "docker"
+brew "docker-compose"
+brew "podman"
+brew "podman-compose"
+brew "colima"
+cask "docker"
+
+# Kubernetes Tools
+brew "kubectl"
+brew "k9s"
+brew "helm"
+brew "kustomize"
+brew "kubectx"
+brew "kube-ps1"
+brew "stern"
+brew "kubeseal"
+brew "kubeval"
+brew "kube-score"
+
+# CI/CD Tools
+brew "gh"
+brew "glab"
+brew "jenkins"
+cask "github"
+
+# Cloud CLI Tools
+brew "awscli"
+brew "azure-cli"
+brew "google-cloud-sdk"
+brew "doctl"
+brew "linode-cli"
+brew "vultr-cli"
+
+# Monitoring & Observability
+brew "prometheus"
+brew "grafana"
+brew "promtail"
+brew "loki"
+brew "jaeger"
+brew "otel-cli"
+
+# Security Tools
+brew "vault"
+brew "trivy"
+brew "snyk"
+brew "checkov"
+brew "tfsec"
+brew "kubeaudit"
+brew "kubesec"
+brew "falco"
+
+# Version Control
+brew "git"
+brew "git-lfs"
+brew "git-secrets"
+brew "pre-commit"
+cask "sourcetree"
+
+# Networking Tools
+brew "curl"
+brew "wget"
+brew "jq"
+brew "yq"
+brew "httpie"
+brew "mtr"
+brew "nmap"
+cask "wireshark"
+
+# Database Tools
+brew "postgresql"
+brew "mysql"
+brew "redis"
+brew "mongodb-community"
+cask "dbeaver-community"
+cask "tableplus"
+
+# Development Tools
+brew "node"
+brew "python@3.11"
+brew "go"
+brew "rust"
+cask "visual-studio-code"
+cask "cursor"
+
+# API & Testing Tools
+cask "postman"
+brew "k6"
+brew "vegeta"
+brew "wrk"
+
+# Logging & Analysis
+brew "elasticsearch"
+brew "logstash"
+brew "kibana"
+brew "fluentd"
+
+# Message Queue
+brew "kafka"
+brew "rabbitmq"
+brew "nats-server"
+
+# Service Mesh
+brew "istioctl"
+brew "linkerd"
+
+# Configuration Management
+brew "consul"
+brew "nomad"
+
+# Backup & Recovery
+brew "restic"
+brew "borgbackup"
+
+# Performance Tools
+brew "htop"
+brew "iotop"
+brew "nethogs"
+brew "btop"
+
+# Text Processing
+brew "ripgrep"
+brew "fd"
+brew "bat"
+brew "exa"
+brew "fzf"
+brew "tree"
+brew "tmux"
+
+# Terraform Tools
+brew "tfenv"
+brew "tflint"
+brew "terraform-docs"
+brew "infracost"
+

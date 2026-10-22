@@ -1,0 +1,31 @@
+---
+# Newt - Pangolin tunnel client for K3s cluster
+# Connects Pangolin VPS to K8s services via ClusterDNS
+# Secret applied via: scripts/bootstrap-secrets.sh
+# Note: fossorial Helm chart requires K8s >=1.28.15; using raw manifests for 1.28.5
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: newt
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ssh://git@192.168.50.44:2222/bp31/mono-homelab.git
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/newt
+    directory:
+      exclude: 'secrets/**'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: newt
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

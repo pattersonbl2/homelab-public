@@ -1,0 +1,51 @@
+---
+- name: Deploy Traefik to K3s Cluster
+  hosts: k3s_cp[0]
+  gather_facts: no
+  vars:
+    kubeconfig_path: "/home/{{ ansible_user }}/.kube/config"
+    traefik_manifest: "/Users/bp31/Documents/gitops/infrastructure/traefik/traefik.yaml"
+
+  tasks:
+    - name: Check if kubectl is available
+      shell: which kubectl || which k3s
+      register: kubectl_check
+      changed_when: false
+
+    - name: Set kubectl command
+      set_fact:
+        kubectl_cmd: "{{ 'kubectl' if 'kubectl' in kubectl_check.stdout else 'k3s kubectl' }}"
+
+    - name: Copy Traefik manifest to control plane
+      copy:
+        src: "{{ traefik_manifest }}"
+        dest: /tmp/traefik.yaml
+        mode: '0644'
+
+    - name: Apply Traefik manifest
+      shell: "{{ kubectl_cmd }} apply -f /tmp/traefik.yaml"
+      register: traefik_apply
+      changed_when: "'created' in traefik_apply.stdout or 'configured' in traefik_apply.stdout"
+
+    - name: Display Traefik deployment result
+      debug:
+        var: traefik_apply.stdout_lines
+
+    - name: Wait for Traefik deployment to be ready
+      shell: "{{ kubectl_cmd }} -n traefik rollout status deployment/traefik --timeout=120s"
+      register: rollout_status
+      changed_when: false
+
+    - name: Get Traefik service info
+      shell: "{{ kubectl_cmd }} -n traefik get svc traefik -o wide"
+      register: traefik_svc
+      changed_when: false
+
+    - name: Display Traefik service
+      debug:
+        var: traefik_svc.stdout_lines
+
+    - name: Cleanup manifest
+      file:
+        path: /tmp/traefik.yaml
+        state: absent

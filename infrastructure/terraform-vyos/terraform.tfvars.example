@@ -1,0 +1,29 @@
+# Proxmox API Configuration
+proxmox_api_url          = "https://192.168.50.76:8006/"
+proxmox_api_token_id     = "terraform@pam!terraform-token"
+proxmox_api_token_secret = "your-token-secret-here"
+proxmox_tls_insecure     = true
+proxmox_ssh_username     = "root"
+
+# Storage Configuration
+vm_cloud_image_datastore = "local"
+vm_storage_pool          = "local-lvm"
+
+# VyOS VM Configuration
+vyos_vm_id       = 200
+vyos_vm_name     = "vyos-gw"
+vyos_node        = "pve2"
+vyos_iso_filename = "vyos-2026.01.18-0024-rolling-generic-amd64.iso"
+
+# VyOS VM Specs
+vyos_cores        = 2
+vyos_cpu_type     = "host"
+vyos_memory       = 2048
+vyos_disk_size    = 10
+vyos_network_model = "virtio"
+
+# Network Configuration
+vyos_wan_bridge = "vmbr0"  # Main network bridge
+vyos_lan_bridge = "lab"     # Lab network bridge
+vyos_wan_ip     = "dhcp"    # WAN uses DHCP
+vyos_lan_ip     = "10.10.0.1"

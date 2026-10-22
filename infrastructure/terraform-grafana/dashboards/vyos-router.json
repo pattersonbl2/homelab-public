@@ -1,0 +1,153 @@
+{
+  "title": "Infrastructure / VyOS Router",
+  "uid": "vyos-router",
+  "tags": ["vyos", "network", "snmp"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "Prometheus", "value": "prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Interface Throughput",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "WAN (eth0) - Inbound",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "rate(ifHCInOctets{job=\"vyos-snmp\", ifDescr=\"eth0\"}[5m]) * 8",
+          "legendFormat": "Inbound"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "WAN (eth0) - Outbound",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "rate(ifHCOutOctets{job=\"vyos-snmp\", ifDescr=\"eth0\"}[5m]) * 8",
+          "legendFormat": "Outbound"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "LAN (eth1) - Inbound",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "expr": "rate(ifHCInOctets{job=\"vyos-snmp\", ifDescr=\"eth1\"}[5m]) * 8",
+          "legendFormat": "Inbound"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "LAN (eth1) - Outbound",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "expr": "rate(ifHCOutOctets{job=\"vyos-snmp\", ifDescr=\"eth1\"}[5m]) * 8",
+          "legendFormat": "Outbound"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "Interface Status",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "collapsed": false
+    },
+    {
+      "title": "Interface Oper Status",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "expr": "ifOperStatus{job=\"vyos-snmp\"}",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "title": "Errors & Discards",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "collapsed": false
+    },
+    {
+      "title": "Interface Errors (In)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "expr": "rate(ifInErrors{job=\"vyos-snmp\"}[5m])",
+          "legendFormat": "{{ ifDescr }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "Interface Errors (Out)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "targets": [
+        {
+          "expr": "rate(ifOutErrors{job=\"vyos-snmp\"}[5m])",
+          "legendFormat": "{{ ifDescr }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "All Interfaces - Throughput",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "collapsed": false
+    },
+    {
+      "title": "All Interfaces - Inbound",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "expr": "rate(ifHCInOctets{job=\"vyos-snmp\"}[5m]) * 8",
+          "legendFormat": "{{ ifDescr }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
+    },
+    {
+      "title": "All Interfaces - Outbound",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "targets": [
+        {
+          "expr": "rate(ifHCOutOctets{job=\"vyos-snmp\"}[5m]) * 8",
+          "legendFormat": "{{ ifDescr }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: k8s-learn-agent
+  namespace: k8s-learn
+spec:
+  endpointSelector:
+    matchLabels:
+      app: k8s-learn-agent
+  ingress:
+  # Accept help requests from n8n
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: n8n
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+  egress:
+  # DNS resolution
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+  # Kubernetes API server — for querying learn-* namespace state
+  - toEntities:
+    - host
+    toPorts:
+    - ports:
+      - port: "6443"
+        protocol: TCP
+  # Ollama on openclaw-1 (RTX 3060 GPU host)
+  - toEntities:
+    - world
+    toPorts:
+    - ports:
+      - port: "11434"
+        protocol: TCP

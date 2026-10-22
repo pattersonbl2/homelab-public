@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - rbac.yaml
+  - public-deployment.yaml
+  - network-policy.yaml
+  - namespace-cleanup.yaml
+  - agent-rbac.yaml
+  - agent-deployment.yaml
+  - agent-network-policy.yaml
+images:
+  - name: gitea.bp31app.com/bp31/k8s-learn-agent
+    newName: gitea.bp31app.com/bp31/k8s-learn-agent
+    newTag: latest
+    digest: sha256:d7b1e9f7532c1a051788ba91ef7fe28b4e748c601a75c7c73f3ceaf841620910

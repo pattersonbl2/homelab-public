@@ -1,0 +1,72 @@
+services:
+  hermes-gateway:
+    build:
+      context: https://github.com/NousResearch/hermes-agent.git
+    image: hermes-agent:local
+    container_name: hermes
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    network_mode: host
+    volumes:
+      - hermes-data:/opt/data
+      # NOTE: kubectl/.kube mounts dropped — k3s is down and those host paths
+      # do not exist on hermes-lxc. Re-add (optionally) if/when k3s returns.
+    environment:
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  hermes-dashboard:
+    build:
+      context: https://github.com/NousResearch/hermes-agent.git
+    image: hermes-agent:local
+    container_name: hermes-dashboard
+    restart: unless-stopped
+# Dashboard binds loopback only: upstream now refuses a 0.0.0.0 bind unless an
+    # auth provider is configured. Reach it via SSH tunnel to 127.0.0.1:9119,
+    # or configure dashboard.basic_auth in /opt/data/config.yaml to expose it.
+    command: ["dashboard", "--host", "127.0.0.1", "--no-open", "--insecure"]
+    network_mode: host
+    depends_on:
+      - hermes-gateway
+    volumes:
+      - hermes-data:/opt/data
+    environment:
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    labels:
+      - "traefik.enable=false"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  hermes-data:

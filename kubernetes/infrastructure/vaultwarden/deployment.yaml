@@ -1,0 +1,54 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vaultwarden
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: vaultwarden
+    spec:
+      containers:
+        - name: vaultwarden
+          image: vaultwarden/server:1.37.2
+          ports:
+            - containerPort: 80
+          env:
+            - name: DATA_FOLDER
+              value: "/data"
+            - name: DOMAIN
+              value: "https://vault.bp31app.com"
+            - name: ROCKET_PORT
+              value: "80"
+            # SECURITY 2026-07-09: open signups disabled on this internet-facing
+            # instance — account already exists; add users via the admin panel
+            # (ADMIN_TOKEN) + INVITATIONS instead of leaving registration open.
+            - name: SIGNUPS_ALLOWED
+              value: "false"
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vaultwarden-secret
+                  key: ADMIN_TOKEN
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 250m
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: vaultwarden-data

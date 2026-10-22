@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: blackbox-exporter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: prometheus-blackbox-exporter
+      targetRevision: 9.0.1
+      helm:
+        valuesObject:
+          serviceMonitor:
+            enabled: false
+          existingConfigMap: blackbox-exporter-config
+    - repoURL: ssh://git@192.168.50.44:2222/bp31/mono-homelab.git
+      targetRevision: HEAD
+      path: kubernetes/infrastructure/blackbox-exporter
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

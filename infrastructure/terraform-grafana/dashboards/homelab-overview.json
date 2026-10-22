@@ -1,0 +1,12 @@
+{
+  "title": "Infrastructure / Homelab Overview",
+  "description": "Consolidated view of cluster health, network, infrastructure, and alerts",
+  "panels": [],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s"
+}

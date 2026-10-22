@@ -1,0 +1,12 @@
+---
+# Wazuh manager address for agent enrollment and communication
+wazuh_manager_ip: "192.168.50.97"
+
+# Pin to exact version matching the running manager (4.14.4)
+wazuh_agent_version: "4.14.4-1"
+
+# Agent group assignment
+wazuh_agent_groups: "default"
+
+# Config profile sent to manager (override for non-Ubuntu hosts like Proxmox/Debian)
+# wazuh_config_profile: "debian, debian12"

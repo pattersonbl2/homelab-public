@@ -1,0 +1,36 @@
+---
+# ServiceAccount for the k8s-learn-agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-learn-agent
+  namespace: k8s-learn
+---
+# ClusterRole: read-only view of learn-* namespace resources + events
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-learn-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-learn-agent
+subjects:
+  - kind: ServiceAccount
+    name: k8s-learn-agent
+    namespace: k8s-learn
+roleRef:
+  kind: ClusterRole
+  name: k8s-learn-agent
+  apiGroup: rbac.authorization.k8s.io

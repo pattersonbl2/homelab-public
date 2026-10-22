@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-coach
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-bp31
+  labels:
+    managed-by: cka-coach
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: cka-bp31
+spec:
+  limits:
+  - default:
+      cpu: 200m
+      memory: 256Mi
+    defaultRequest:
+      cpu: 50m
+      memory: 64Mi
+    type: Container
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sandbox-quota
+  namespace: cka-bp31
+spec:
+  hard:
+    pods: "20"
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi

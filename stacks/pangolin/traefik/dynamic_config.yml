@@ -1,0 +1,261 @@
+http:
+  middlewares:
+    crowdsec:
+      forwardAuth:
+        address: http://crowdsec-traefik-bouncer:8080/api/v1/forwardAuth
+        trustForwardHeader: true
+    badger:
+      plugin:
+        badger:
+          disableForwardAuth: true
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+    strip-integration-prefix:
+      stripPrefix:
+        prefixes:
+          - "/integration"
+        forceSlash: false
+    pihole-redirect-admin:
+      redirectRegex:
+        regex: "^(https?://[^/]+)/?$"
+        replacement: "${1}/admin/"
+        permanent: false
+    authentik:
+      forwardAuth:
+        address: http://host.docker.internal:9000/outpost.goauthentik.io/auth/traefik
+        trustForwardHeader: true
+        authResponseHeaders:
+          - X-authentik-username
+          - X-authentik-groups
+          - X-authentik-email
+          - X-authentik-name
+          - X-authentik-uid
+          - X-authentik-jwt
+          - X-authentik-meta-jwks
+          - X-authentik-meta-outpost
+          - X-authentik-meta-provider
+          - X-authentik-meta-app
+          - X-authentik-meta-version
+
+  routers:
+    main-app-router-redirect:
+      rule: "Host(`pangolin.vps.bp31app.com`)"
+      service: next-service
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+        - badger
+
+    next-router:
+      rule: "Host(`pangolin.vps.bp31app.com`) && !PathPrefix(`/api/v1`)"
+      service: next-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - crowdsec
+        - badger
+      tls:
+        certResolver: letsencrypt
+
+    api-router:
+      rule: "Host(`pangolin.vps.bp31app.com`) && PathPrefix(`/api/v1`)"
+      service: api-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - crowdsec
+        - badger
+      tls:
+        certResolver: letsencrypt
+
+    integration-api-router:
+      rule: "Host(`pangolin.vps.bp31app.com`) && PathPrefix(`/integration`)"
+      service: integration-api-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - strip-integration-prefix
+      tls:
+        certResolver: letsencrypt
+
+    ws-router:
+      rule: "Host(`pangolin.vps.bp31app.com`)"
+      service: api-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - badger
+      tls:
+        certResolver: letsencrypt
+
+    pihole-http:
+      rule: "Host(`dns.vps.bp31app.com`)"
+      service: pihole-service
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+        - pihole-redirect-admin
+
+    pihole-https:
+      rule: "Host(`dns.vps.bp31app.com`)"
+      service: pihole-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - crowdsec
+        - pihole-redirect-admin
+      tls:
+        certResolver: letsencrypt
+
+    vps-metrics-http:
+      rule: "Host(`vps-metrics.vps.bp31app.com`)"
+      service: vps-metrics-service
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+
+    vps-metrics-https:
+      rule: "Host(`vps-metrics.vps.bp31app.com`)"
+      service: vps-metrics-service
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    crowdsec-metrics-https:
+      rule: "Host(`crowdsec-metrics.vps.bp31app.com`)"
+      service: crowdsec-metrics-service
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    traefik-metrics-http:
+      rule: "Host(`traefik-metrics.vps.bp31app.com`)"
+      service: traefik-metrics-service
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+
+    traefik-metrics-https:
+      rule: "Host(`traefik-metrics.vps.bp31app.com`)"
+      service: traefik-metrics-service
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    # Authentik routes
+    authentik-http:
+      rule: "Host(`auth.vps.bp31app.com`)"
+      service: authentik-service
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+
+    authentik-https:
+      rule: "Host(`auth.vps.bp31app.com`)"
+      service: authentik-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - crowdsec
+      tls:
+        certResolver: letsencrypt
+
+    # Authentik outpost (handles forward auth callbacks)
+    authentik-outpost:
+      rule: "HostRegexp(`{subdomain:[a-z0-9-]+}.vps.bp31app.com`) && PathPrefix(`/outpost.goauthentik.io/`)"
+      service: authentik-service
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    # K3s wildcard - routes *.bp31app.com (single-level subdomains) to K3s Traefik via Newt
+    k3s-wildcard-http:
+      rule: "HostRegexp(`[a-z0-9][a-z0-9-]*\\.bp31app\\.com`)"
+      service: k3s-traefik-service
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      priority: 1
+
+    k3s-wildcard-https:
+      rule: "HostRegexp(`[a-z0-9][a-z0-9-]*\\.bp31app\\.com`)"
+      service: k3s-traefik-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - crowdsec
+      tls:
+        certResolver: cloudflare-wildcard
+        domains:
+          - main: bp31app.com
+            sans:
+              - "*.bp31app.com"
+      priority: 1
+
+  services:
+    next-service:
+      loadBalancer:
+        servers:
+          - url: "http://pangolin:3002"
+
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://pangolin:3000"
+
+    integration-api-service:
+      loadBalancer:
+        servers:
+          - url: "http://pangolin:3003"
+
+    pihole-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8081"
+
+    vps-metrics-service:
+      loadBalancer:
+        servers:
+          - url: "http://node-exporter:9100"
+
+    crowdsec-metrics-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:6060"
+
+    # traefik runs with network_mode: service:gerbil, so its own metrics
+    # entryPoint is reachable via gerbil's network identity, not its own
+    traefik-metrics-service:
+      loadBalancer:
+        servers:
+          - url: "http://gerbil:8082"
+
+    authentik-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:9000"
+
+    k3s-traefik-service:
+      loadBalancer:
+        servers:
+          - url: "http://REDACTED_TAILSCALE_IP:51866"
+
+tcp:
+  serversTransports:
+    pp-transport-v1:
+      proxyProtocol:
+        version: 1
+    pp-transport-v2:
+      proxyProtocol:
+        version: 2

@@ -1,0 +1,34 @@
+type: http
+name: discord
+log_level: info
+format: |
+  {
+    "content": null,
+    "embeds": [
+      {
+        "title": "🚨 CrowdSec Alert - Hostinger VPS",
+        "color": 15158332,
+        "fields": [
+          {{range . -}}
+          {{$alert := . -}}
+          {{range .Decisions -}}
+          {"name": "🌐 IP Address", "value": "`{{.Value}}`", "inline": true},
+          {"name": "⚡ Action", "value": "{{.Type}}", "inline": true},
+          {"name": "⏱️ Duration", "value": "{{.Duration}}", "inline": true},
+          {"name": "🎯 Scenario", "value": "{{.Scenario}}", "inline": false},
+          {"name": "📍 Country", "value": "{{$alert.Source.Cn}}", "inline": true},
+          {"name": "🏢 AS", "value": "{{$alert.Source.AsName}}", "inline": true}
+          {{end -}}
+          {{end -}}
+        ],
+        "timestamp": "{{now | date "2006-01-02T15:04:05Z07:00"}}"
+      }
+    ]
+  }
+
+url: ${DISCORD_WEBHOOK_URL}
+
+method: POST
+
+headers:
+  Content-Type: application/json

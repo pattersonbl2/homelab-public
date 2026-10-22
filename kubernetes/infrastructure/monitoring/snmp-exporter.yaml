@@ -1,0 +1,79 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snmp-exporter
+  namespace: monitoring
+  labels:
+    app: snmp-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: snmp-exporter
+  template:
+    metadata:
+      labels:
+        app: snmp-exporter
+    spec:
+      initContainers:
+        - name: patch-config
+          image: prom/snmp-exporter:v0.26.0
+          command: ['sh', '-c']
+          args:
+            - |
+              cp /etc/snmp_exporter/snmp.yml /config/snmp.yml
+              # Add custom auth for VyOS with our community string
+              sed -i 's/^auths:/auths:\n  vyos_v2:\n    community: a7e66f8356bcad4d04264ed74b4ca8c4\n    security_level: noAuthNoPriv\n    auth_protocol: MD5\n    priv_protocol: DES\n    version: 2/' /config/snmp.yml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      containers:
+        - name: snmp-exporter
+          image: prom/snmp-exporter:v0.26.0
+          args:
+            - --config.file=/config/snmp.yml
+          ports:
+            - containerPort: 9116
+              name: metrics
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 100m
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: snmp-exporter
+  namespace: monitoring
+  labels:
+    app: snmp-exporter
+spec:
+  selector:
+    app: snmp-exporter
+  ports:
+    - port: 9116
+      targetPort: metrics
+      name: metrics

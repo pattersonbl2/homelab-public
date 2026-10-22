@@ -1,0 +1,28 @@
+driver:
+  kind: kmod
+
+collectors:
+  containerd:
+    enabled: true
+    socket: /run/k3s/containerd/containerd.sock
+  docker:
+    enabled: false
+
+falcosidekick:
+  enabled: true
+  replicaCount: 1
+  config:
+    alertmanager:
+      hostport: "http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093"
+      endpoint: "/api/v2/alerts"
+      expiresafter: 300
+    customfields:
+      cluster: homelab-k3s
+
+tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+    operator: Exists
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+    operator: Exists

@@ -1,0 +1,6 @@
+name: homelab/whitelist
+description: "Whitelist homelab admin IPs"
+whitelist:
+  reason: "homelab admin IP"
+  ip:
+    - "REDACTED_HOME_IP"

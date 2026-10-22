@@ -1,0 +1,56 @@
+argocd-image-updater:
+  fullnameOverride: argocd-image-updater
+
+  # Git commit identity for write-back commits
+  config:
+    git.user: argocd-image-updater
+    git.email: argocd-image-updater@bp31app.com
+
+    # Gitea container registry
+    registries:
+      - name: Gitea
+        api_url: https://gitea.bp31app.com
+        prefix: gitea.bp31app.com
+        ping: no
+        insecure: no
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+
+  # Deploy the ImageUpdater CR that watches k8s-learn-agent
+  extraObjects:
+    - apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+      kind: ImageUpdater
+      metadata:
+        name: k8s-learn-agent
+        namespace: argocd
+      spec:
+        # Write updated digest back to git kustomization.yaml
+        writeBackConfig:
+          method: "git:secret:argocd/argocd-image-updater-git-creds"
+          gitConfig:
+            branch: main
+            writeBackTarget: "kustomization:."
+        applicationRefs:
+          - namePattern: k8s-learn
+            images:
+              - alias: agent
+                imageName: gitea.bp31app.com/bp31/k8s-learn-agent:latest
+                commonUpdateSettings:
+                  updateStrategy: digest
+                manifestTargets:
+                  kustomize:
+                    name: gitea.bp31app.com/bp31/k8s-learn-agent

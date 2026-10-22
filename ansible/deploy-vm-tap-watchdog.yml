@@ -1,0 +1,50 @@
+# ansible/deploy-vm-tap-watchdog.yml
+#
+# VM-tap sibling of deploy-lxc-veth-watchdog.yml: same ifupdown2 bridge
+# fragility (see scripts/lxc-veth-watchdog.sh), but for qemu VM taps
+# instead of LXC veths. Found live on autobots on 2026-07-30 — tap300i0/
+# tap312i0/tap313i0/tap314i0 (optimus/jazz/ironhide/ratchet) detached from
+# vmbr1 with no corresponding networking.service restart event captured,
+# so the trigger for VM taps may not be identical to the LXC case, but
+# the failure mode and fix are the same. Does not touch the existing
+# pve-guests.service override — that boot-race mitigation already covers
+# both VMs and LXCs.
+---
+- name: Deploy VM tap watchdog
+  hosts: proxmox
+  become: yes
+
+  tasks:
+    - name: Copy watchdog script
+      copy:
+        src: ../scripts/vm-tap-watchdog.sh
+        dest: /usr/local/bin/vm-tap-watchdog.sh
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install watchdog systemd service
+      copy:
+        src: files/vm-tap-watchdog.service
+        dest: /etc/systemd/system/vm-tap-watchdog.service
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Install watchdog systemd timer
+      copy:
+        src: files/vm-tap-watchdog.timer
+        dest: /etc/systemd/system/vm-tap-watchdog.timer
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Enable and start watchdog timer
+      systemd:
+        name: vm-tap-watchdog.timer
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes

@@ -1,0 +1,143 @@
+# Dynamic Traefik config: Pi-hole, Proxmox, TrueNAS, localai-gpu services
+# Uses env vars: DOMAIN, PROXMOX_PVE_IP, PROXMOX_PVE2_IP, TRUENAS_IP, PIHOLE_HOST, OPENCLAW_HOST
+http:
+  serversTransports:
+    proxmox-insecure:
+      insecureSkipVerify: true
+
+  middlewares:
+    pihole-redirect-root:
+      redirectRegex:
+        regex: "^(https?://[^/]+)/?$"
+        replacement: "${1}/admin/"
+        permanent: false
+
+  services:
+    pihole:
+      loadBalancer:
+        servers:
+          - url: 'http://{{ env "PIHOLE_HOST" }}:8081'
+        passHostHeader: true
+
+    pve:
+      loadBalancer:
+        servers:
+          - url: "https://{{ env "PROXMOX_PVE_IP" }}:8006"
+        serversTransport: proxmox-insecure
+        passHostHeader: true
+
+    pve2:
+      loadBalancer:
+        servers:
+          - url: "https://{{ env "PROXMOX_PVE2_IP" }}:8006"
+        serversTransport: proxmox-insecure
+        passHostHeader: true
+
+    truenas:
+      loadBalancer:
+        servers:
+          - url: "https://{{ env "TRUENAS_IP" }}:443"
+        serversTransport: proxmox-insecure
+        passHostHeader: true
+
+    open-webui:
+      loadBalancer:
+        servers:
+          - url: 'http://{{ env "OPENCLAW_HOST" }}:8080'
+        passHostHeader: true
+
+    openclaw:
+      loadBalancer:
+        servers:
+          - url: 'http://{{ env "OPENCLAW_HOST" }}:18789'
+        passHostHeader: true
+
+  routers:
+    pihole-http:
+      rule: "Host(`pihole.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - web
+      service: pihole
+      middlewares:
+        - pihole-redirect-root
+
+    pihole:
+      rule: "Host(`pihole.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - websecure
+      service: pihole
+      middlewares:
+        - pihole-redirect-root
+      tls:
+        certResolver: cloudflare
+
+    pve-http:
+      rule: "Host(`pve.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - web
+      service: pve
+
+    pve:
+      rule: "Host(`pve.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - websecure
+      service: pve
+      tls:
+        certResolver: cloudflare
+
+    pve2-http:
+      rule: "Host(`pve2.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - web
+      service: pve2
+
+    pve2:
+      rule: "Host(`pve2.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - websecure
+      service: pve2
+      tls:
+        certResolver: cloudflare
+
+    truenas-http:
+      rule: "Host(`truenas.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - web
+      service: truenas
+
+    truenas:
+      rule: "Host(`truenas.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - websecure
+      service: truenas
+      tls:
+        certResolver: cloudflare
+
+    open-webui-http:
+      rule: "Host(`llm.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - web
+      service: open-webui
+
+    open-webui:
+      rule: "Host(`llm.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - websecure
+      service: open-webui
+      tls:
+        certResolver: cloudflare
+
+    openclaw-http:
+      rule: "Host(`openclaw.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - web
+      service: openclaw
+
+    openclaw:
+      rule: "Host(`openclaw.{{ env "DOMAIN" }}`)"
+      entryPoints:
+        - websecure
+      service: openclaw
+      tls:
+        certResolver: cloudflare
+

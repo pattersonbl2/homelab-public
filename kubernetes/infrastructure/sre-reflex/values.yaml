@@ -1,0 +1,30 @@
+image:
+  repository: ghcr.io/pattersonbl2/sre-reflex
+  tag: sha-06f28cd
+
+# Secret `sre-reflex` (sealed in manifests/) provides DATABASE_URL, LABEL_HMAC_KEY, NTFY_TOKEN.
+existingSecret: sre-reflex
+
+env:
+  ENABLED_MODELS: "openjev,ollama"
+  PROMETHEUS_URL: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+  LOKI_URL: http://loki-stack.monitoring.svc.cluster.local:3100
+  # llm-lxc (192.168.50.32): open-jev model server (GPU) + Ollama baseline
+  MODEL_SERVER_URL: http://192.168.50.32:8000
+  OLLAMA_URL: http://192.168.50.32:11434
+  OLLAMA_MODEL: qwen3.5:9b
+  NTFY_URL: http://ntfy.ntfy.svc.cluster.local
+  NTFY_TOPIC: sre-reflex
+  # Phone taps the ✅/🔇 ntfy buttons; only /label is routed (manifests/ingress.yaml)
+  PUBLIC_LABEL_URL: https://reflex.bp31app.com
+
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+
+metricQueries:
+  KubePodCrashLooping:
+    - name: restarts in 15m
+      query: increase(kube_pod_container_status_restarts_total{namespace="$namespace",pod="$pod"}[15m])
+      unit: ""

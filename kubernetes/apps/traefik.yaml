@@ -1,0 +1,82 @@
+---
+# Traefik Ingress Controller via Helm
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: 34.5.0
+      helm:
+        valuesObject:
+          ports:
+            web:
+              port: 8000
+              exposedPort: 80
+              protocol: TCP
+            websecure:
+              port: 8443
+              exposedPort: 443
+              protocol: TCP
+            metrics:
+              port: 9100
+              expose:
+                default: true
+              exposedPort: 9100
+              protocol: TCP
+          service:
+            type: LoadBalancer
+          ingressClass:
+            enabled: true
+            isDefaultClass: true
+          providers:
+            kubernetesIngress:
+              publishedService:
+                enabled: true
+          api:
+            dashboard: true
+            insecure: true
+          metrics:
+            prometheus:
+              entryPoint: metrics
+              addEntryPointsLabels: true
+              addRoutersLabels: true
+              addServicesLabels: true
+          logs:
+            general:
+              level: INFO
+            # Access logs to stdout -> promtail -> Loki (7d retention).
+            # User-Agent is kept so unused-service analysis can tell
+            # real traffic apart from background scanning.
+            access:
+              enabled: true
+              format: json
+              fields:
+                headers:
+                  names:
+                    User-Agent: keep
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+    - repoURL: ssh://git@192.168.50.44:2222/bp31/mono-homelab.git
+      targetRevision: HEAD
+      path: kubernetes/infrastructure/traefik
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,243 @@
+---
+# Configure Pangolin resources and targets via the Integration API.
+# Runs from localhost — no SSH needed.
+# Safe to re-run: checks existing resources/targets before creating.
+#
+# Usage:
+#   ansible-playbook -i inventory-vps.ini configure-pangolin-resources.yml \
+#     -e pangolin_api_key=<id>.<secret>
+#
+# Variables (pass via --extra-vars or group_vars):
+#   pangolin_api_url    - https://pangolin.vps.bp31app.com
+#   pangolin_api_key    - API key in format {id}.{secret}
+#   pangolin_org_id     - homelab
+#   pangolin_site_id    - 1
+#   pangolin_domain_id  - domain1
+#   k3s_traefik_lb_ip   - K3s Traefik LoadBalancer IP (default: 10.10.10.241)
+#                         check: kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+#
+- name: Configure Pangolin resources and targets
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    pangolin_api_url: "https://pangolin.vps.bp31app.com/integration/v1"
+    pangolin_org_id: "homelab"
+    pangolin_site_id: "1"
+    pangolin_domain_id: "domain1"
+
+    # K3s Traefik LoadBalancer IP — check with:
+    #   kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+    # Override at runtime: -e k3s_traefik_lb_ip=10.10.10.xxx
+    k3s_traefik_lb_ip: "10.10.10.241"
+
+    # Docker Compose services (siteId 1 = homelab Docker host)
+    pangolin_services:
+      - name: Jellyfin
+        subdomain: jellyfin
+        host: jellyfin
+        port: 8096
+        siteId: 1
+      - name: Gitea
+        subdomain: gitea
+        host: gitea
+        port: 3000
+        siteId: 1
+      - name: Jellyseerr
+        subdomain: requests
+        host: jellyseerr
+        port: 5055
+        siteId: 1
+      - name: Portainer
+        subdomain: portainer
+        host: portainer
+        port: 9000
+        siteId: 1
+      - name: Open WebUI
+        subdomain: ai
+        host: open-webui
+        port: 8080
+        siteId: 1
+      - name: Vikunja
+        subdomain: projects
+        host: vikunja
+        port: 3456
+        siteId: 1
+
+    # K3s monitoring services (siteId 2 = k3 site, routes via K3s Traefik)
+    # Requires matching Ingress objects at *.vps.bp31app.com in the gitops repo
+    k3s_monitoring_services:
+      - name: Grafana
+        subdomain: grafana
+        port: 80
+        siteId: 2
+      - name: Prometheus
+        subdomain: prometheus
+        port: 80
+        siteId: 2
+      - name: Alertmanager
+        subdomain: alertmanager
+        port: 80
+        siteId: 2
+      # Loki push endpoint — VPS promtail ships logs here
+      - name: Loki Push
+        subdomain: loki-push
+        port: 80
+        siteId: 2
+      # Uptime Kuma
+      - name: Uptime Kuma
+        subdomain: uptime
+        port: 80
+        siteId: 2
+      # Ntfy notifications
+      - name: Ntfy
+        subdomain: ntfy
+        port: 80
+        siteId: 2
+      # Vaultwarden
+      - name: Vaultwarden
+        subdomain: vault
+        port: 80
+        siteId: 2
+      # Longhorn UI
+      - name: Longhorn
+        subdomain: longhorn
+        port: 80
+        siteId: 2
+      # Ollama API (Stock RAG)
+      - name: Ollama
+        subdomain: ollama
+        port: 80
+        siteId: 2
+      # Hubble UI (Cilium network observability)
+      - name: Hubble
+        subdomain: hubble
+        port: 80
+        siteId: 2
+
+    # Combined list used for all Pangolin operations
+    all_pangolin_services: "{{ pangolin_services + (k3s_monitoring_services | map('combine', {'host': k3s_traefik_lb_ip}) | list) }}"
+
+  tasks:
+    - name: Validate that pangolin_api_key is set
+      assert:
+        that: pangolin_api_key is defined and pangolin_api_key | length > 0
+        fail_msg: "pangolin_api_key is required. Pass via -e pangolin_api_key=<id>.<secret>"
+
+    # ── Fetch existing resources ─────────────────────────────────────────────
+
+    - name: GET existing resources
+      uri:
+        url: "{{ pangolin_api_url }}/org/{{ pangolin_org_id }}/resources"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: existing_resources_resp
+
+    - name: Build list of existing resource names
+      set_fact:
+        existing_resource_names: "{{ existing_resources_resp.json.data.resources | map(attribute='name') | list }}"
+
+    - name: Build lookup of existing resources by name
+      set_fact:
+        existing_resources_by_name: "{{ existing_resources_resp.json.data.resources | items2dict(key_name='name', value_name='resourceId') }}"
+
+    # ── Create missing resources ─────────────────────────────────────────────
+
+    - name: Create resource (skip if already exists)
+      uri:
+        url: "{{ pangolin_api_url }}/org/{{ pangolin_org_id }}/resource"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          subdomain: "{{ item.subdomain }}"
+          domainId: "{{ pangolin_domain_id }}"
+          http: true
+          protocol: "tcp"
+        status_code: [200, 201]
+        validate_certs: true
+      register: create_resource_results
+      loop: "{{ all_pangolin_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.name not in existing_resource_names
+
+    # ── Re-fetch resources to get IDs (including any just created) ───────────
+
+    - name: GET resources (after create)
+      uri:
+        url: "{{ pangolin_api_url }}/org/{{ pangolin_org_id }}/resources"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: all_resources_resp
+
+    - name: Build final resource ID lookup by name
+      set_fact:
+        resource_id_by_name: "{{ all_resources_resp.json.data.resources | items2dict(key_name='name', value_name='resourceId') }}"
+
+    # ── Create targets ───────────────────────────────────────────────────────
+
+    - name: GET targets for each resource
+      uri:
+        url: "{{ pangolin_api_url }}/resource/{{ resource_id_by_name[item.name] }}/targets"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        status_code: 200
+        validate_certs: true
+      register: existing_targets_results
+      loop: "{{ all_pangolin_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: resource_id_by_name[item.name] is defined
+
+    - name: Build set of resource IDs that already have targets
+      set_fact:
+        resources_with_targets: >-
+          {{
+            existing_targets_results.results
+            | selectattr('json.data.targets', 'defined')
+            | selectattr('json.data.targets', 'ne', [])
+            | map(attribute='item.name')
+            | list
+          }}
+
+    - name: Create target for resource (skip if target already exists)
+      uri:
+        url: "{{ pangolin_api_url }}/resource/{{ resource_id_by_name[item.name] }}/target"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ pangolin_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          ip: "{{ item.host }}"
+          port: "{{ item.port }}"
+          method: "http"
+          enabled: true
+          siteId: "{{ item.siteId }}"
+        status_code: [200, 201]
+        validate_certs: true
+      loop: "{{ all_pangolin_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - resource_id_by_name[item.name] is defined
+        - item.name not in resources_with_targets
+
+    - name: Summary
+      debug:
+        msg: "Done. Resources configured: {{ all_pangolin_services | map(attribute='name') | list }}"

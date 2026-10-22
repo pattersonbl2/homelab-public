@@ -1,0 +1,9 @@
+# Grafana Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+# Grafana URL (via kubectl port-forward)
+grafana_url = "http://localhost:3000"
+
+# Grafana API key or service account token
+# Create in Grafana: Administration > Service Accounts > Add token
+grafana_auth = "glsa_xxxxxxxxxxxxxxxxxxxx"

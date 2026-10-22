@@ -1,0 +1,52 @@
+---
+- name: Check if wazuh-agent is already installed
+  stat:
+    path: /var/ossec/bin/wazuh-control
+  register: wazuh_installed
+
+- name: Download Wazuh GPG key
+  ansible.builtin.shell:
+    cmd: curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh-archive-keyring.gpg
+    creates: /usr/share/keyrings/wazuh-archive-keyring.gpg
+
+- name: Add Wazuh APT repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/wazuh-archive-keyring.gpg] https://packages.wazuh.com/4.x/apt/ stable main"
+    state: present
+    filename: wazuh
+    update_cache: no
+
+- name: Update Wazuh repo cache
+  ansible.builtin.shell:
+    cmd: apt-get update -o Dir::Etc::sourcelist="sources.list.d/wazuh.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+
+- name: Install wazuh-agent
+  apt:
+    name: "wazuh-agent={{ wazuh_agent_version }}"
+    state: present
+    update_cache: no
+  environment:
+    WAZUH_MANAGER: "{{ wazuh_manager_ip }}"
+    WAZUH_AGENT_GROUP: "{{ wazuh_agent_groups }}"
+  when: not wazuh_installed.stat.exists
+
+- name: Template ossec.conf
+  template:
+    src: ossec.conf.j2
+    dest: /var/ossec/etc/ossec.conf
+    owner: root
+    group: wazuh
+    mode: '0640'
+  notify: restart wazuh-agent
+
+- name: Enable and start wazuh-agent
+  systemd:
+    name: wazuh-agent
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Hold wazuh-agent package version
+  dpkg_selections:
+    name: wazuh-agent
+    selection: hold

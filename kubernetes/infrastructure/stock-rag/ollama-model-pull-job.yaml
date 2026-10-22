@@ -1,0 +1,42 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-pull-model
+  namespace: stock-rag
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull-model
+          image: curlimages/curl:8.18.0
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Ollama to be ready..."
+              until curl -sf http://ollama.stock-rag.svc.cluster.local:11434/api/tags; do
+                sleep 5
+              done
+              echo "Pulling llama3.1:8b model..."
+              curl -sf http://ollama.stock-rag.svc.cluster.local:11434/api/pull \
+                -d '{"name": "llama3.1:8b"}' \
+                --max-time 1800
+              echo "Model pull complete!"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 64Mi
+              cpu: 100m

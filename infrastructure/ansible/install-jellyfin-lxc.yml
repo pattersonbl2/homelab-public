@@ -1,0 +1,51 @@
+---
+- name: Install Jellyfin on jellyfin-lxc
+  hosts: jellyfin-lxc
+  become: true
+
+  tasks:
+    - name: Install dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - curl
+          - gnupg
+          - intel-media-va-driver
+          - vainfo
+        state: present
+        update_cache: true
+
+    - name: Add Jellyfin apt repository key
+      apt_key:
+        url: https://repo.jellyfin.org/jellyfin_team.gpg.key
+        state: present
+
+    - name: Add Jellyfin apt repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://repo.jellyfin.org/debian bookworm main"
+        state: present
+        filename: jellyfin
+
+    - name: Install Jellyfin
+      apt:
+        name: jellyfin
+        state: present
+        update_cache: true
+
+    - name: Add jellyfin user to render and video groups
+      user:
+        name: jellyfin
+        groups: render,video
+        append: true
+
+    - name: Create /dev/dri directory in LXC
+      file:
+        path: /dev/dri
+        state: directory
+        mode: "0755"
+
+    - name: Start and enable Jellyfin
+      systemd:
+        name: jellyfin
+        state: started
+        enabled: true

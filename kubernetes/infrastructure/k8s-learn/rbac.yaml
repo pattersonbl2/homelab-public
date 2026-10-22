@@ -1,0 +1,48 @@
+---
+# ClusterRole for provisioning learn-* namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-learn-provisioner
+rules:
+  # Namespace lifecycle (provisioner creates/deletes learn-* namespaces)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create", "delete"]
+  # Core resources — provisioner creates these + must hold perms granted to user Role
+  - apiGroups: [""]
+    resources: ["pods", "services", "serviceaccounts", "secrets", "configmaps", "limitranges", "resourcequotas"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Deployments + ReplicaSets — create + get (readiness polling) + user Role perms
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Ingress + NetworkPolicy — provisioner creates + user Role grants ingress perms
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RBAC — provisioner creates Roles/RoleBindings in user namespaces
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["create"]
+---
+# ServiceAccount for the public deployment (provisioner)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-learn-public
+  namespace: k8s-learn
+---
+# Bind provisioner ClusterRole to public SA
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-learn-public
+subjects:
+  - kind: ServiceAccount
+    name: k8s-learn-public
+    namespace: k8s-learn
+roleRef:
+  kind: ClusterRole
+  name: k8s-learn-provisioner
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bp31.k3s-lab-route</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/libexec/k3s-lab-route.sh</string>
+    </array>
+
+    <!-- Boot: may fire before Wi-Fi has an address (script no-ops safely);
+         the WatchPaths below re-fire once DHCP completes. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Network state changes: resolv.conf is rewritten on every DHCP lease /
+         network join, and SystemConfiguration changes on interface events. -->
+    <key>WatchPaths</key>
+    <array>
+        <string>/var/run/resolv.conf</string>
+        <string>/Library/Preferences/SystemConfiguration</string>
+    </array>
+
+    <!-- Heartbeat: repairs the route if it was manually deleted or an event
+         was missed. Script is idempotent and exits in milliseconds. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

@@ -1,0 +1,43 @@
+---
+# Prepare K3s nodes for Longhorn storage
+# Must run BEFORE syncing the Longhorn ArgoCD app.
+#
+# Usage:
+#   ansible-playbook -i k3s-inventory.ini prep-longhorn.yml
+#
+# What it does:
+#   - Installs open-iscsi, util-linux, nfs-common
+#   - Enables and starts iscsid
+#
+- name: Prepare K3s nodes for Longhorn
+  hosts: k3s_cp:k3s_worker
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Longhorn prerequisites
+      apt:
+        name:
+          - open-iscsi
+          - util-linux
+          - nfs-common
+        state: present
+
+    - name: Enable and start iscsid
+      systemd:
+        name: iscsid
+        state: started
+        enabled: yes
+
+    - name: Verify iscsid is running
+      command: systemctl is-active iscsid
+      register: iscsid_status
+      changed_when: false
+
+    - name: Show iscsid status
+      debug:
+        msg: "iscsid on {{ inventory_hostname }}: {{ iscsid_status.stdout }}"

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Pre-push hook: block force push and delete of main.
+# Install: cp scripts/git-pre-push-hook .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+
+set -e
+
+remote="$1"
+url="$2"
+
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    if [ -z "$remote_sha" ]; then
+      echo "[pre-push] ERROR: Pushing to delete 'main' is not allowed."
+      exit 1
+    fi
+    if [ "$local_sha" != "$remote_sha" ]; then
+      # Check if this is a force push (rewriting history)
+      if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        echo "[pre-push] ERROR: Force push to 'main' is not allowed."
+        echo "[pre-push] Use a new commit or revert instead of --force."
+        exit 1
+      fi
+    fi
+  fi
+done
+
+exit 0

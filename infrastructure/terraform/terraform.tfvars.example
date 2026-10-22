@@ -1,0 +1,43 @@
+# Proxmox Configuration
+proxmox_api_url          = "https://192.168.1.100:8006/"
+proxmox_api_token_id     = "terraform@pam!terraform-token"
+proxmox_api_token_secret = "your-token-secret-here"
+proxmox_tls_insecure     = true
+proxmox_node             = "proxmox-node-1"
+
+# VM Configuration
+# Uses the proxmox-vm module for creating Docker Compose VMs
+# For media stack (arr + Jellyfin + VPN): 8 GB RAM min, 16 GB recommended; 4 cores recommended
+vm_count         = 1
+vm_name_prefix   = "homelab"
+vm_vmid_start    = 200
+vm_cores         = 4
+vm_memory        = 8192
+vm_cpu_type      = "host"
+vm_disk_size     = 50
+vm_storage_pool  = "local-lvm"
+vm_bridge        = "vmbr0"
+vm_network_model = "virtio"
+
+# Network: DHCP is used (no static IP configuration needed)
+# VMs will be accessible via hostname (e.g., homelab-1.local)
+
+# Hostname Configuration
+vm_hostname = "homelab"
+
+# User Configuration
+vm_user     = "ubuntu"
+vm_password = "" # Leave empty if using SSH keys only
+
+# SSH Configuration
+ssh_public_key       = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC... your-key-here"
+ssh_private_key_path = "~/.ssh/id_rsa"
+
+# Optional: Manual IP override (leave empty to auto-detect via QEMU agent)
+# vm_ip_addresses = ["192.168.1.100"]
+
+# Tailscale LXC (remote access to homelab when away)
+tailscale_enabled       = true
+tailscale_lxc_ip        = "192.168.50.5"   # same subnet as your LAN
+tailscale_subnet_cidr   = "192.168.50.0/24"
+tailscale_gateway       = "192.168.50.1"

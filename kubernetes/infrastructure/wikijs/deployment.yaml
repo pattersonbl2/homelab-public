@@ -1,0 +1,96 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikijs
+  namespace: wikijs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wikijs
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wikijs
+    spec:
+      # No fsGroup — initContainer handles PVC ownership + SSH key perms explicitly.
+      # fsGroup would force group-read (0440) on secret mounts, which SSH rejects.
+      initContainers:
+        - name: init-perms
+          image: busybox:1.38.0
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - |
+              # Fix PVC ownership so wiki (UID 1000) can write to /wiki/data
+              chown -R 1000:1000 /wiki/data
+              # Remove stale SSH key file so wiki.js creates it fresh with 0600.
+              # fs-extra outputFile only applies mode to NEW files; an existing file
+              # with wrong permissions (0660 from old fsGroup) would be kept as-is.
+              rm -f /wiki/data/secure/git-ssh.pem
+              # Copy SSH deploy key to emptyDir with strict 0400 perms.
+              # YAML |- strips trailing newline; OpenSSH requires it — add it back.
+              cp /secret/git-ssh.pem /wiki/ssh/git-ssh.pem
+              printf '\n' >> /wiki/ssh/git-ssh.pem
+              chown 1000:1000 /wiki/ssh/git-ssh.pem
+              chmod 400 /wiki/ssh/git-ssh.pem
+          volumeMounts:
+            - name: data
+              mountPath: /wiki/data
+            - name: git-ssh-secret
+              mountPath: /secret
+              readOnly: true
+            - name: git-ssh-key
+              mountPath: /wiki/ssh
+      containers:
+        - name: wikijs
+          image: requarks/wiki:2
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          env:
+            - name: DB_TYPE
+              value: postgres
+            - name: DB_HOST
+              value: "192.168.50.15"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: wikijs
+            - name: DB_NAME
+              value: wikijs
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: wikijs-secret
+                  key: DB_PASS
+          volumeMounts:
+            - name: data
+              mountPath: /wiki/data
+            - name: git-ssh-key
+              mountPath: /wiki/ssh
+              readOnly: true
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: wikijs-data
+        - name: git-ssh-secret
+          secret:
+            secretName: wikijs-secret
+            items:
+              - key: GIT_DEPLOY_KEY
+                path: git-ssh.pem
+        - name: git-ssh-key
+          emptyDir: {}

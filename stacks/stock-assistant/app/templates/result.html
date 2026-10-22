@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analysis Result - Stock Assistant</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+        a {
+            color: #4a9eff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .back {
+            display: inline-block;
+            margin-bottom: 1.5rem;
+            color: #888;
+        }
+        .back:hover {
+            color: #4a9eff;
+        }
+        .query-box {
+            background: #1a1a1a;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 1.5rem;
+        }
+        .query-box label {
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .query-box p {
+            margin: 0.5rem 0 0;
+            color: #e5e5e5;
+        }
+        .response {
+            background: #1a1a1a;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid #333;
+            line-height: 1.6;
+        }
+        .response h2 {
+            margin-top: 0;
+            color: #4a9eff;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .response pre {
+            background: #0f0f0f;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .stock-data {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: #0f0f0f;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            color: #aaa;
+        }
+        .actions {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .btn {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #444;
+        }
+        .btn-primary {
+            background: #4a9eff;
+        }
+        .btn-primary:hover {
+            background: #3a8eef;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back">← Back to Stock Assistant</a>
+    
+    <h1>📊 Analysis Result</h1>
+    
+    <div class="query-box">
+        <label>Your Question</label>
+        <p>{{ query }}</p>
+        {% if symbols %}
+        <label style="margin-top: 0.75rem;">Symbols</label>
+        <p>{{ symbols }}</p>
+        {% endif %}
+    </div>
+    
+    <div class="response">
+        <h2>AI Analysis</h2>
+        <div>{{ response | replace('\n', '<br>') | safe }}</div>
+    </div>
+    
+    {% if stock_data %}
+    <details>
+        <summary style="cursor: pointer; color: #888; margin-top: 1.5rem;">View Raw Stock Data</summary>
+        <div class="stock-data">{{ stock_data }}</div>
+    </details>
+    {% endif %}
+    
+    <div class="actions">
+        <a href="/" class="btn btn-primary">New Analysis</a>
+    </div>
+</body>
+</html>

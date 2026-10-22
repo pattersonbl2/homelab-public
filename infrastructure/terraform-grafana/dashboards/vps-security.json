@@ -1,0 +1,584 @@
+{
+  "title": "VPS / Health & Resources",
+  "uid": "vps-security",
+  "tags": [
+    "vps",
+    "crowdsec",
+    "security"
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "selected": true,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "VPS Health",
+      "type": "row",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false
+    },
+    {
+      "title": "CPU Usage",
+      "type": "gauge",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{instance=~\".*vps.*\", mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "CPU %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Memory Usage",
+      "type": "gauge",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "(1 - (node_memory_MemAvailable_bytes{instance=~\".*vps.*\"} / node_memory_MemTotal_bytes{instance=~\".*vps.*\"})) * 100",
+          "legendFormat": "Memory %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Disk Usage",
+      "type": "gauge",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "100 - ((node_filesystem_avail_bytes{instance=~\".*vps.*\", mountpoint=\"/\", fstype!=\"rootfs\"} / node_filesystem_size_bytes{instance=~\".*vps.*\", mountpoint=\"/\", fstype!=\"rootfs\"}) * 100)",
+          "legendFormat": "Disk %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "targets": [
+        {
+          "expr": "time() - node_boot_time_seconds{instance=~\".*vps.*\"}",
+          "legendFormat": "Uptime"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "title": "Resource History",
+      "type": "row",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "title": "CPU Over Time",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "targets": [
+            {
+              "expr": "100 - (avg(rate(node_cpu_seconds_total{instance=~\".*vps.*\", mode=\"idle\"}[5m])) * 100)",
+              "legendFormat": "CPU %"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        {
+          "title": "Memory Over Time",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "targets": [
+            {
+              "expr": "node_memory_MemTotal_bytes{instance=~\".*vps.*\"} - node_memory_MemAvailable_bytes{instance=~\".*vps.*\"}",
+              "legendFormat": "Used"
+            },
+            {
+              "expr": "node_memory_MemTotal_bytes{instance=~\".*vps.*\"}",
+              "legendFormat": "Total"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "title": "Network & Services",
+      "type": "row",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "title": "Network Traffic",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          },
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total{instance=~\".*vps.*\", device!~\"lo|docker.*|veth.*\"}[5m])",
+              "legendFormat": "Received ({{ device }})"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total{instance=~\".*vps.*\", device!~\"lo|docker.*|veth.*\"}[5m])",
+              "legendFormat": "Transmitted ({{ device }})"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps"
+            }
+          }
+        },
+        {
+          "title": "Network Connections",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 17
+          },
+          "targets": [
+            {
+              "expr": "node_netstat_Tcp_CurrEstab{instance=~\".*vps.*\"}",
+              "legendFormat": "Established"
+            },
+            {
+              "expr": "node_netstat_Tcp_InSegs{instance=~\".*vps.*\"}",
+              "legendFormat": "Incoming"
+            }
+          ]
+        },
+        {
+          "title": "Container Count",
+          "type": "stat",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 25
+          },
+          "targets": [
+            {
+              "expr": "count(container_last_seen{instance=~\".*vps.*\", name!=\"\"})",
+              "legendFormat": "Containers"
+            }
+          ]
+        },
+        {
+          "title": "Pangolin Requests",
+          "type": "stat",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 25
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(traefik_service_requests_total{instance=~\".*vps.*\"}[5m]))",
+              "legendFormat": "req/s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "title": "Pi-hole Queries",
+          "type": "stat",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 25
+          },
+          "targets": [
+            {
+              "expr": "rate(pihole_queries_total{instance=~\".*vps.*\"}[5m])",
+              "legendFormat": "queries/s"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "CrowdSec Security",
+      "type": "row",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "collapsed": false
+    },
+    {
+      "title": "Active Decisions",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "cs_active_decisions",
+          "legendFormat": "Active Bans"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Alerts (24h)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "increase(cs_alerts[24h])",
+          "legendFormat": "Alerts"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 200
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Parsed Logs/s",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "rate(cs_parser_hits_total[5m])",
+          "legendFormat": "logs/s"
+        }
+      ]
+    },
+    {
+      "title": "Bouncer Queries/s",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "rate(cs_lapi_bouncer_requests_total[5m])",
+          "legendFormat": "queries/s"
+        }
+      ]
+    },
+    {
+      "title": "Security Trends",
+      "type": "row",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "title": "Alerts Over Time",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 35
+          },
+          "targets": [
+            {
+              "expr": "rate(cs_alerts[5m])",
+              "legendFormat": "Alerts/s"
+            }
+          ]
+        },
+        {
+          "title": "Active Decisions Over Time",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 35
+          },
+          "targets": [
+            {
+              "expr": "cs_active_decisions",
+              "legendFormat": "Active Decisions"
+            }
+          ]
+        },
+        {
+          "title": "Alerts by Scenario",
+          "type": "piechart",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 43
+          },
+          "targets": [
+            {
+              "expr": "increase(cs_alerts[24h]) > 0",
+              "legendFormat": "{{ scenario }}"
+            }
+          ]
+        },
+        {
+          "title": "Top Attack Sources",
+          "type": "table",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 43
+          },
+          "targets": [
+            {
+              "expr": "topk(10, increase(cs_alerts[24h]))",
+              "format": "table",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "title": "Parser Throughput",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 51
+          },
+          "targets": [
+            {
+              "expr": "rate(cs_parser_hits_total[5m])",
+              "legendFormat": "{{ source }}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "title": "Bouncer Requests",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 51
+          },
+          "targets": [
+            {
+              "expr": "rate(cs_lapi_bouncer_requests_total[5m])",
+              "legendFormat": "{{ route }}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

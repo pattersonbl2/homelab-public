@@ -1,0 +1,165 @@
+services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    networks:
+      - homelab
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Allow only what Traefik needs
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - SERVICES=1
+      - SWARM=1
+      - TASKS=1
+      - VERSION=1
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - DISTRIBUTION=0
+      - EXEC=0
+      - NODES=0
+      - PLUGINS=0
+      - SECRETS=0
+      - SESSION=0
+      - SYSTEM=0
+      - VOLUMES=0
+    labels:
+      - "traefik.enable=false"
+
+  # traefik service removed — reverse proxy handled by proxy-lxc (192.168.50.33)
+
+  portainer:
+    image: portainer/portainer-ce:2.39.4
+    container_name: portainer
+    restart: unless-stopped
+    env_file:
+      - ../env
+    networks:
+      - homelab
+    environment:
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+    ports:
+      - "9000:9000"
+    volumes:
+      - portainer-data:/data
+    depends_on:
+      - docker-socket-proxy
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router (for public domains)
+      - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN}`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
+      # HTTP router (for local domains)
+      - "traefik.http.routers.portainer-http.rule=Host(`portainer.${DOMAIN}`)"
+      - "traefik.http.routers.portainer-http.entrypoints=web"
+      - "traefik.http.routers.portainer-http.service=portainer"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      # Homepage
+      - "homepage.group=Infrastructure"
+      - "homepage.name=Portainer"
+      - "homepage.icon=portainer"
+      - "homepage.href=https://portainer.${DOMAIN}"
+      - "homepage.description=Container Management"
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v1.13.2
+    container_name: homepage
+    restart: unless-stopped
+    env_file:
+      - ../env
+    networks:
+      - homelab
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./homepage:/app/config
+    environment:
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+      - HOMEPAGE_ALLOWED_HOSTS=localhost,127.0.0.1,home.local.bp31app.com,home.vps.bp31app.com
+      - HOMEPAGE_VAR_GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    depends_on:
+      - docker-socket-proxy
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router (for public domains)
+      - "traefik.http.routers.homepage.rule=Host(`home.${DOMAIN}`)"
+      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.tls.certresolver=cloudflare"
+      # HTTP router (for local domains) - higher priority to avoid redirects
+      - "traefik.http.routers.homepage-http.rule=Host(`home.${DOMAIN}`)"
+      - "traefik.http.routers.homepage-http.entrypoints=web"
+      - "traefik.http.routers.homepage-http.service=homepage"
+      - "traefik.http.routers.homepage-http.priority=10"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+
+  node-exporter:
+    image: prom/node-exporter:v1.11.1
+    container_name: node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - textfile-data:/textfile:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.textfile.directory=/textfile'
+    ports:
+      - "9100:9100"
+    networks:
+      - homelab
+    labels:
+      - "traefik.enable=false"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /cgroup:/cgroup:ro
+    ports:
+      - "8083:8080"
+    networks:
+      - homelab
+    labels:
+      - "traefik.enable=false"
+
+  pve-exporter:
+    image: prompve/prometheus-pve-exporter:3.9.0
+    container_name: pve-exporter
+    restart: unless-stopped
+    command: ["--config.file", "/config/pve.yml"]
+    volumes:
+      - ./pve.yml:/config/pve.yml:ro
+    ports:
+      - "9221:9221"
+    networks:
+      - homelab
+    labels:
+      - "traefik.enable=false"
+
+networks:
+  homelab:
+    name: homelab
+    external: true
+
+volumes:
+  portainer-data:
+  textfile-data:

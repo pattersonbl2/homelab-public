@@ -1,0 +1,37 @@
+---
+# sre-reflex: shadow-mode alert triage (bot). Chart lives in github.com/pattersonbl2/sre-reflex;
+# values + namespace/secret live here. The model server runs on llm-lxc (GPU), not in K3s.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sre-reflex
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/pattersonbl2/sre-reflex.git
+      path: chart
+      targetRevision: 06f28cd3e6a805466967dbc7f45e9047683b3c59  # main after PR #3 (06f28cd); pin, bump deliberately
+      helm:
+        releaseName: sre-reflex
+        valueFiles:
+          - $values/kubernetes/infrastructure/sre-reflex/values.yaml
+    - repoURL: ssh://git@192.168.50.44:2222/bp31/mono-homelab.git
+      targetRevision: HEAD
+      ref: values
+    - repoURL: ssh://git@192.168.50.44:2222/bp31/mono-homelab.git
+      targetRevision: HEAD
+      path: kubernetes/infrastructure/sre-reflex/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sre-reflex
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,262 @@
+# ansible/deploy-breakglass.yml
+#
+# breakglass-lxc (144) needs Pi-hole DNS (192.168.50.20) set via
+# `pct set 144 --nameserver 192.168.50.20`, otherwise gitea.bp31app.com
+# resolves to public Cloudflare IPv6 addresses with no working ingress
+# route, and propose_fix git clones 404.
+---
+- name: Deploy breakglass MCP server
+  hosts: breakglass
+  become: yes
+
+  vars:
+    breakglass_token: "{{ lookup('env', 'BREAKGLASS_TOKEN') }}"
+    breakglass_ssh_key_path: "{{ lookup('env', 'BREAKGLASS_SSH_KEY_PATH') | default('~/.ssh/id_ed25519_breakglass', true) }}"
+    # Separate, non-restricted key for ansible_run — the main
+    # breakglass_ssh_key_path above is locked to breakglass-dispatch.sh's
+    # forced-command allow-list on autobots/maximals/etc, which can only
+    # ever run one fixed pre-approved command per host. Ansible needs a
+    # real shell (temp dirs, module transfer, arbitrary Python execution),
+    # so it gets its own key with normal SSH access instead — the security
+    # boundary for ansible_run is breakglass's own allow-list (which
+    # playbooks are approved), same model as rollout_restart's K8s RBAC
+    # scoping, not an SSH-level restriction.
+    breakglass_ansible_ssh_key_path: "{{ lookup('env', 'BREAKGLASS_ANSIBLE_SSH_KEY_PATH') | default('~/.ssh/id_ed25519_breakglass_ansible', true) }}"
+    breakglass_gitea_token: "{{ lookup('env', 'BREAKGLASS_GITEA_TOKEN') }}"
+    breakglass_claude_token: "{{ lookup('env', 'BREAKGLASS_CLAUDE_TOKEN') }}"
+    # JSON object of {tf var name: value} -> becomes TF_VAR_<name> for every
+    # terraform_plan call. Project-specific (right now just docker-hosts'
+    # proxmox_api_token_id/secret, ssh_public_key, vm_password) — global
+    # rather than per-project because only one project is allow-listed so
+    # far; revisit if a second project needs conflicting var names.
+    breakglass_tf_vars_json: "{{ lookup('env', 'BREAKGLASS_TF_VARS_JSON') | default('{}', true) }}"
+    breakglass_kubeconfig_src: "{{ lookup('env', 'BREAKGLASS_KUBECONFIG_SRC') | default('../services/breakglass/deploy/kubeconfig', true) }}"
+    breakglass_tf_r2_account_id: "{{ lookup('env', 'BREAKGLASS_TF_R2_ACCOUNT_ID') }}"
+    breakglass_tf_r2_access_key_id: "{{ lookup('env', 'BREAKGLASS_TF_R2_ACCESS_KEY_ID') }}"
+    breakglass_tf_r2_secret_access_key: "{{ lookup('env', 'BREAKGLASS_TF_R2_SECRET_ACCESS_KEY') }}"
+
+  tasks:
+    - name: Fail fast if BREAKGLASS_TOKEN is not set
+      fail:
+        msg: "Set BREAKGLASS_TOKEN in your shell before running this playbook"
+      when: breakglass_token | length == 0
+
+    - name: Fail fast if BREAKGLASS_GITEA_TOKEN is not set
+      fail:
+        msg: "Set BREAKGLASS_GITEA_TOKEN in your shell before running this playbook"
+      when: breakglass_gitea_token | length == 0
+
+    - name: Fail fast if BREAKGLASS_CLAUDE_TOKEN is not set
+      fail:
+        msg: "Set BREAKGLASS_CLAUDE_TOKEN in your shell before running this playbook"
+      when: breakglass_claude_token | length == 0
+
+    - name: Install system packages
+      apt:
+        name:
+          - python3
+          - python3-venv
+          - openssh-client
+          - rsync
+          - git
+          - nodejs
+          - npm
+          - unzip
+          - gnupg
+          - software-properties-common
+          - ansible-core
+        state: present
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install the claude CLI (headless Claude Code)
+      npm:
+        name: "@anthropic-ai/claude-code"
+        global: yes
+      notify: restart breakglass
+
+    - name: Install kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v1.30.14/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    - name: Add HashiCorp apt key
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+
+    - name: Add HashiCorp apt repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+
+    - name: Install terraform
+      apt:
+        name: terraform
+        state: present
+        update_cache: yes
+
+    - name: Create breakglass system user
+      user:
+        name: breakglass
+        system: yes
+        shell: /usr/sbin/nologin
+        home: /opt/breakglass
+        create_home: no
+
+    - name: Create directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: breakglass
+        group: breakglass
+        mode: '0750'
+      loop:
+        - /opt/breakglass
+        - /etc/breakglass
+        - /opt/breakglass/scratch
+        - /opt/breakglass/home
+
+    - name: Copy application source
+      synchronize:
+        src: ../services/breakglass/breakglass/
+        dest: /opt/breakglass/breakglass/
+      become: no
+      notify: restart breakglass
+
+    - name: Copy pyproject.toml
+      copy:
+        src: ../services/breakglass/pyproject.toml
+        dest: /opt/breakglass/pyproject.toml
+        owner: breakglass
+        group: breakglass
+        mode: '0644'
+
+    - name: Create venv and install package
+      command: python3 -m venv /opt/breakglass/.venv
+      args:
+        creates: /opt/breakglass/.venv/bin/python
+
+    - name: Install breakglass package into venv
+      command: /opt/breakglass/.venv/bin/pip install -e /opt/breakglass
+      args:
+        chdir: /opt/breakglass
+      notify: restart breakglass
+
+    - name: Deploy allow-list config
+      copy:
+        src: ../services/breakglass/deploy/allowlist.yaml
+        dest: /etc/breakglass/allowlist.yaml
+        owner: breakglass
+        group: breakglass
+        mode: '0640'
+      notify: restart breakglass
+
+    - name: Deploy the restricted SSH private key
+      copy:
+        src: "{{ breakglass_ssh_key_path }}"
+        dest: /etc/breakglass/id_ed25519_breakglass
+        owner: breakglass
+        group: breakglass
+        mode: '0600'
+      notify: restart breakglass
+
+    - name: Deploy the ansible_run SSH private key (normal access, not forced-command)
+      copy:
+        src: "{{ breakglass_ansible_ssh_key_path }}"
+        dest: /etc/breakglass/id_ed25519_ansible
+        owner: breakglass
+        group: breakglass
+        mode: '0600'
+      notify: restart breakglass
+
+    - name: Check whether the scoped K8s kubeconfig source file exists
+      stat:
+        path: "{{ breakglass_kubeconfig_src }}"
+      delegate_to: localhost
+      become: no
+      register: kubeconfig_src_stat
+
+    - name: Fail fast if the scoped K8s kubeconfig source file is missing
+      fail:
+        msg: >-
+          Could not find kubeconfig source at
+          '{{ breakglass_kubeconfig_src }}'. Generate it with
+          kubernetes/scripts/bootstrap-breakglass-rbac.sh (see that script's
+          usage comment), or set BREAKGLASS_KUBECONFIG_SRC to point at an
+          existing scoped kubeconfig.
+      when: not kubeconfig_src_stat.stat.exists
+
+    - name: Deploy the scoped K8s kubeconfig (from bootstrap-breakglass-rbac.sh output)
+      copy:
+        src: "{{ breakglass_kubeconfig_src }}"
+        dest: /etc/breakglass/kubeconfig
+        owner: breakglass
+        group: breakglass
+        mode: '0600'
+      notify: restart breakglass
+
+    - name: Deploy static ansible inventory (inventory.ini is gitignored — the
+        ansible_run tool clones the repo fresh each run and never has it,
+        so a real copy has to live on the host itself, same reasoning as
+        the kubeconfig above)
+      copy:
+        src: inventory.ini
+        dest: /etc/breakglass/inventory.ini
+        owner: breakglass
+        group: breakglass
+        mode: '0640'
+
+    - name: Write environment file
+      copy:
+        dest: /etc/breakglass/breakglass.env
+        owner: breakglass
+        group: breakglass
+        mode: '0640'
+        content: |
+          BREAKGLASS_TOKEN={{ breakglass_token }}
+          BREAKGLASS_ALLOWLIST_PATH=/etc/breakglass/allowlist.yaml
+          BREAKGLASS_NTFY_TOPIC=homelab-alerts
+          BREAKGLASS_WATCHDOG_TOPIC=homelab-breakglass-watchdog
+          BREAKGLASS_GITEA_TOKEN={{ breakglass_gitea_token }}
+          BREAKGLASS_GITEA_BASE_URL=https://gitea.bp31app.com
+          BREAKGLASS_GIT_AUTHOR_NAME=hermes-bot
+          BREAKGLASS_GIT_AUTHOR_EMAIL=hermes-bot@bp31app.com
+          BREAKGLASS_KUBECONFIG_PATH=/etc/breakglass/kubeconfig
+          BREAKGLASS_CLAUDE_TOKEN={{ breakglass_claude_token }}
+          BREAKGLASS_TF_R2_ACCOUNT_ID={{ breakglass_tf_r2_account_id }}
+          BREAKGLASS_TF_R2_ACCESS_KEY_ID={{ breakglass_tf_r2_access_key_id }}
+          BREAKGLASS_TF_R2_SECRET_ACCESS_KEY={{ breakglass_tf_r2_secret_access_key }}
+          BREAKGLASS_ANSIBLE_SSH_KEY_PATH=/etc/breakglass/id_ed25519_ansible
+          BREAKGLASS_TF_VARS_JSON={{ breakglass_tf_vars_json }}
+          HOME=/opt/breakglass/home
+      notify: restart breakglass
+
+    - name: Set ownership on /opt/breakglass
+      file:
+        path: /opt/breakglass
+        owner: breakglass
+        group: breakglass
+        recurse: yes
+
+    - name: Install systemd unit
+      copy:
+        src: ../services/breakglass/deploy/breakglass.service
+        dest: /etc/systemd/system/breakglass.service
+        mode: '0644'
+      notify: restart breakglass
+
+    - name: Enable and start breakglass service
+      systemd:
+        name: breakglass
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+  handlers:
+    - name: restart breakglass
+      systemd:
+        name: breakglass
+        state: restarted
+        daemon_reload: yes

@@ -1,0 +1,37 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble
+  namespace: kube-system
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: hubble-metrics
+      interval: 30s
+      path: /metrics
+---
+# Service to expose Hubble metrics port on Cilium agents
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-hubble-metrics
+  namespace: kube-system
+  labels:
+    k8s-app: cilium
+spec:
+  selector:
+    k8s-app: cilium
+  ports:
+    - name: hubble-metrics
+      port: 9965
+      targetPort: 9965
+      protocol: TCP
+  clusterIP: None

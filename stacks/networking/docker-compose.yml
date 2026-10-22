@@ -1,0 +1,31 @@
+services:
+  pihole:
+    image: pihole/pihole:2026.06.0
+    container_name: pihole
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    env_file:
+      - ../env
+    environment:
+      - WEBPASSWORD=${WEBPASSWORD:?WEBPASSWORD is required}
+      - TZ=America/New_York
+      - FTLCONF_webserver_port=8081
+      - FTLCONF_dns_listeningMode=all
+      - PIHOLE_UID=0
+      - PIHOLE_GID=0
+    volumes:
+      - pihole-data:/etc/pihole
+      - pihole-dnsmasq.d:/etc/dnsmasq.d
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+
+networks:
+  homelab:
+    name: homelab
+    external: true
+
+volumes:
+  pihole-data:
+  pihole-dnsmasq.d:

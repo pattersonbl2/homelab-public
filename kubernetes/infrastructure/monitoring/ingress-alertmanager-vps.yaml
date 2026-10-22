@@ -1,0 +1,23 @@
+---
+# Alertmanager ingress for Pangolin tunnel (vps.bp31app.com domain)
+# Traffic arrives via Pangolin -> Newt -> K3s Traefik -> this service
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alertmanager-vps
+  namespace: monitoring
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: alertmanager.vps.bp31app.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kube-prometheus-stack-alertmanager
+            port:
+              number: 9093

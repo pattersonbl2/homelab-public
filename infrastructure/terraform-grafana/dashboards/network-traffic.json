@@ -1,0 +1,12 @@
+{
+  "title": "K3s / Network Traffic",
+  "description": "goflow2 NetFlow - top flows, bandwidth by interface, protocol breakdown",
+  "panels": [],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s"
+}

@@ -1,0 +1,328 @@
+---
+- name: Deploy Docker Compose Stacks to Homelab
+  hosts: homelab_vms
+  become: yes
+  vars:
+    docker_user: "{{ ansible_user }}"
+    homelab_dir: "/home/{{ ansible_user }}/homelab"
+    # Default stacks to deploy - can be overridden with --extra-vars
+    stacks_to_deploy:
+      - core
+    # All available stacks
+    available_stacks:
+      - core
+      - media
+      - networking
+      - ai-tools
+      - newt
+      - wazuh
+      - backup
+      - semaphore
+    # Stacks restricted to a single host (same NEWT_ID on two hosts = WireGuard key collision)
+    single_host_stacks:
+      newt: localai-gpu
+      wazuh: localai-gpu
+      backup: localai-gpu
+      semaphore: localai-gpu
+    # NFS mounts for media stack - set these if /mnt/arr and /mnt/corn are NFS
+    # nfs_arr_export: "nfs-server.example.com:/export/arr"
+    # nfs_corn_export: "nfs-server.example.com:/export/corn"
+    nfs_arr_export: ""
+    nfs_corn_export: ""
+    nfs_mount_wait_retries: 12
+    nfs_mount_wait_delay: 5
+
+  tasks:
+    - name: Add persistent static route to K3s network via VyOS
+      copy:
+        content: |
+          network:
+            version: 2
+            ethernets:
+              {{ ansible_default_ipv4.interface }}:
+                routes:
+                  - to: 10.10.10.0/24
+                    via: 192.168.50.18
+        dest: /etc/netplan/60-homelab-routes.yaml
+        mode: '0600'
+      register: netplan_route
+
+    - name: Apply netplan if route config changed
+      command: netplan apply
+      when: netplan_route.changed
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Create homelab directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0755'
+      loop:
+        - "{{ homelab_dir }}"
+        - "{{ homelab_dir }}/stacks"
+        - "{{ homelab_dir }}/configs"
+        - "{{ homelab_dir }}/data"
+        - "{{ homelab_dir }}/logs"
+
+    - name: Create stack directories
+      file:
+        path: "{{ homelab_dir }}/stacks/{{ item }}"
+        state: directory
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0755'
+      loop: "{{ stacks_to_deploy }}"
+      when: >
+        item not in single_host_stacks or
+        single_host_stacks[item] == inventory_hostname
+
+    - name: Copy shared env file
+      copy:
+        src: "{{ playbook_dir }}/../stacks/env"
+        dest: "{{ homelab_dir }}/stacks/env"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0600'
+
+    - name: Copy stack docker-compose files
+      copy:
+        src: "{{ playbook_dir }}/../stacks/{{ item }}/docker-compose.yml"
+        dest: "{{ homelab_dir }}/stacks/{{ item }}/docker-compose.yml"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0644'
+      loop: "{{ stacks_to_deploy }}"
+      when: >
+        item not in single_host_stacks or
+        single_host_stacks[item] == inventory_hostname
+
+    - name: Copy Traefik configuration (for core stack)
+      copy:
+        src: "{{ playbook_dir }}/../stacks/core/traefik.yml"
+        dest: "{{ homelab_dir }}/stacks/core/traefik.yml"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0644'
+      when: "'core' in stacks_to_deploy"
+
+    - name: Copy Traefik dynamic config (for core stack)
+      copy:
+        src: "{{ playbook_dir }}/../stacks/core/dynamic/"
+        dest: "{{ homelab_dir }}/stacks/core/dynamic/"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0644'
+      when: "'core' in stacks_to_deploy"
+
+    - name: Copy pve_exporter config (for core stack)
+      copy:
+        src: "{{ playbook_dir }}/../stacks/core/pve.yml"
+        dest: "{{ homelab_dir }}/stacks/core/pve.yml"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0600'
+      when:
+        - "'core' in stacks_to_deploy"
+        - lookup('fileglob', playbook_dir + '/../stacks/core/pve.yml') | length > 0
+
+    - name: Create homepage config directory (for core stack)
+      file:
+        path: "{{ homelab_dir }}/stacks/core/homepage"
+        state: directory
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0755'
+      when: "'core' in stacks_to_deploy"
+
+    - name: Copy homepage configuration files (for core stack)
+      copy:
+        src: "{{ playbook_dir }}/../stacks/core/homepage/"
+        dest: "{{ homelab_dir }}/stacks/core/homepage/"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0644'
+      when: "'core' in stacks_to_deploy"
+
+    - name: Create Wazuh config directory (for wazuh stack)
+      file:
+        path: "{{ homelab_dir }}/stacks/wazuh/config"
+        state: directory
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0755'
+      when: "'wazuh' in stacks_to_deploy"
+
+    - name: Copy Wazuh configuration files (for wazuh stack)
+      copy:
+        src: "{{ playbook_dir }}/../stacks/wazuh/config/"
+        dest: "{{ homelab_dir }}/stacks/wazuh/config/"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0644'
+      when: "'wazuh' in stacks_to_deploy"
+
+    - name: Copy Wazuh cert generator compose file (for wazuh stack)
+      copy:
+        src: "{{ playbook_dir }}/../stacks/wazuh/generate-indexer-certs.yml"
+        dest: "{{ homelab_dir }}/stacks/wazuh/generate-indexer-certs.yml"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0644'
+      when: "'wazuh' in stacks_to_deploy"
+
+    - name: Copy scripts to homelab host (for NFS wait, etc.)
+      copy:
+        src: "{{ playbook_dir }}/../scripts/"
+        dest: "{{ homelab_dir }}/scripts/"
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0755'
+      when: "'media' in stacks_to_deploy"
+
+    - name: Create media stack config directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ docker_user }}"
+        group: "{{ docker_user }}"
+        mode: '0755'
+      loop:
+        - /data/gluetun
+        - /data/qbittorrent
+        - /data/sonarr
+        - /data/radarr
+        - /data/prowlarr
+        - /data/nzbget
+        - /data/jellyfin
+        - /data/jellyseerr
+        - /data/speedtest-tracker
+        - /data/whisparr
+      when: "'media' in stacks_to_deploy"
+
+    - name: Install nfs-common for media stack NFS mounts
+      apt:
+        name: nfs-common
+        state: present
+      when: "'media' in stacks_to_deploy"
+
+    - name: Create NFS mount points for media stack
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /mnt/arr
+        - /mnt/corn
+      when: "'media' in stacks_to_deploy"
+      ignore_errors: yes
+
+    - name: Add NFS arr export to fstab and mount
+      mount:
+        path: /mnt/arr
+        src: "{{ nfs_arr_export }}"
+        fstype: nfs
+        state: mounted
+        opts: _netdev,auto,x-systemd.requires=network-online.target
+      when:
+        - "'media' in stacks_to_deploy"
+        - "nfs_arr_export | length > 0"
+
+    - name: Add NFS corn export to fstab and mount
+      mount:
+        path: /mnt/corn
+        src: "{{ nfs_corn_export }}"
+        fstype: nfs
+        state: mounted
+        opts: _netdev,auto,x-systemd.requires=network-online.target
+      when:
+        - "'media' in stacks_to_deploy"
+        - "nfs_corn_export | length > 0"
+
+    - name: Apply NFS mounts from fstab
+      command: mount -a
+      failed_when: false
+      changed_when: false
+      when: "'media' in stacks_to_deploy"
+
+    - name: Wait for NFS mount /mnt/arr before media stack
+      shell: |
+        HAS_FSTAB=$(grep -c '/mnt/arr' /etc/fstab 2>/dev/null || echo 0)
+        for i in $(seq 1 {{ nfs_mount_wait_retries }}); do
+          mount -a 2>/dev/null || true
+          if [ "$HAS_FSTAB" -gt 0 ]; then
+            if mountpoint -q /mnt/arr 2>/dev/null; then
+              echo "NFS /mnt/arr is mounted"
+              exit 0
+            fi
+          else
+            if test -d /mnt/arr; then
+              echo "/mnt/arr exists (local)"
+              exit 0
+            fi
+          fi
+          echo "Waiting for NFS /mnt/arr (attempt $i/{{ nfs_mount_wait_retries }})..."
+          sleep {{ nfs_mount_wait_delay }}
+        done
+        echo "NFS /mnt/arr not available - ensure NFS server is up"
+        exit 1
+      args:
+        executable: /bin/bash
+      when: "'media' in stacks_to_deploy"
+
+    - name: Create media stack arr directories (on NFS once mounted)
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0777'
+      loop:
+        - /mnt/arr/downloads
+        - /mnt/arr/downloads/completed
+        - /mnt/arr/downloads/completed/tv
+        - /mnt/arr/downloads/completed/movies
+        - /mnt/arr/tv
+        - /mnt/arr/movies
+        - /mnt/corn/downloads
+      when: "'media' in stacks_to_deploy"
+
+    - name: Wait for Docker socket to be available
+      wait_for:
+        path: /var/run/docker.sock
+        timeout: 30
+
+    - name: Create shared Docker network
+      community.docker.docker_network:
+        name: homelab
+        state: present
+      ignore_errors: yes
+
+    - name: Deploy stacks with Docker Compose
+      shell: |
+        cd {{ homelab_dir }}/stacks/{{ item }}
+        docker compose --env-file ../env up -d --remove-orphans
+      loop: "{{ stacks_to_deploy }}"
+      register: docker_compose_result
+      changed_when: true
+      when: >
+        item not in single_host_stacks or
+        single_host_stacks[item] == inventory_hostname
+
+    - name: Display deployment status
+      debug:
+        msg: "Stack '{{ item.item }}' deployed successfully"
+      loop: "{{ docker_compose_result.results | default([]) }}"
+      when: item.rc is defined and item.rc == 0
+
+    - name: List running containers
+      shell: docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"
+      register: running_containers
+      changed_when: false
+
+    - name: Show running containers
+      debug:
+        var: running_containers.stdout_lines

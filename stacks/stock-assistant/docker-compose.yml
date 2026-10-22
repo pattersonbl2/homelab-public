@@ -1,0 +1,30 @@
+services:
+  stock-assistant:
+    build: .
+    container_name: stock-assistant
+    restart: unless-stopped
+    env_file:
+      - ../env
+    networks:
+      - homelab
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${STOCK_OLLAMA_MODEL:-llama3.1:8b}
+      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY:-}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stock-assistant.rule=Host(`stocks.${DOMAIN}`)"
+      - "traefik.http.routers.stock-assistant.entrypoints=websecure"
+      - "traefik.http.routers.stock-assistant.tls.certresolver=cloudflare"
+      - "traefik.http.services.stock-assistant.loadbalancer.server.port=8000"
+      - "homepage.group=AI"
+      - "homepage.name=Stock Assistant"
+      - "homepage.icon=mdi-chart-line"
+      - "homepage.href=https://stocks.${DOMAIN}"
+      - "homepage.description=AI-powered stock analysis"
+
+networks:
+  homelab:
+    name: homelab
+    external: true

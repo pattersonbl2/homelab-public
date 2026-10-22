@@ -1,0 +1,42 @@
+## STATIC configuration
+api:
+  dashboard: true
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addRoutersLabels: true
+
+accessLog:
+  filePath: "/var/log/traefik/access.log"
+  format: json
+  bufferingSize: 100
+  fields:
+    headers:
+      names:
+        User-Agent: keep
+
+entryPoints:
+  metrics:
+    address: ":8082"
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+certificatesResolvers:
+  cloudflare:
+    acme:
+      email: bpatterson@ark31.info
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+  # docker provider intentionally disabled (services live in other LXCs)

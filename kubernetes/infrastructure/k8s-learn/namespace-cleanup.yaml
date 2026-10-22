@@ -1,0 +1,76 @@
+---
+# ServiceAccount for cleanup CronJob
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-learn-cleanup
+  namespace: k8s-learn
+---
+# Bind the provisioner ClusterRole to the cleanup SA
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-learn-cleanup
+subjects:
+  - kind: ServiceAccount
+    name: k8s-learn-cleanup
+    namespace: k8s-learn
+roleRef:
+  kind: ClusterRole
+  name: k8s-learn-provisioner
+  apiGroup: rbac.authorization.k8s.io
+---
+# CronJob: delete learn-* namespaces older than 24h
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: namespace-cleanup
+  namespace: k8s-learn
+spec:
+  schedule: "0 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          serviceAccountName: k8s-learn-cleanup
+          restartPolicy: Never
+          containers:
+            - name: cleanup
+              image: bitnami/kubectl@sha256:558420daf32bbc382e3e9af4537f4073085b336ddd47399a3b70e70087115978
+              command:
+                - sh
+                - -c
+                - |
+                  echo "==> Checking for stale learn-* namespaces (TTL: 24h)"
+                  NOW=$(date +%s)
+
+                  kubectl get namespaces -l managed-by=k8s-learn \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.creationTimestamp}{"\n"}{end}' | \
+                  while read NS TS; do
+                    [ -z "$NS" ] && continue
+                    CLEAN_TS=$(echo "$TS" | sed 's/T/ /; s/Z//')
+                    CREATED=$(date -d "$CLEAN_TS" +%s)
+                    AGE_H=$(( (NOW - CREATED) / 3600 ))
+                    if [ "$AGE_H" -ge 24 ]; then
+                      echo "==> Deleting $NS (age: ${AGE_H}h)"
+                      kubectl delete namespace "$NS"
+                    else
+                      echo "    Keeping $NS (age: ${AGE_H}h)"
+                    fi
+                  done
+                  echo "==> Cleanup complete"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]

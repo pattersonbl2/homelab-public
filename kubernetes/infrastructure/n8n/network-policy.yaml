@@ -1,0 +1,127 @@
+---
+# Default deny all ingress
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: n8n
+spec:
+  endpointSelector: {}
+  ingress: []
+---
+# Allow Traefik ingress to n8n
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-traefik-ingress
+  namespace: n8n
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: n8n
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "5678"
+              protocol: TCP
+---
+# Allow n8n app to reach PostgreSQL (egress from n8n, ingress to PG)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-n8n-to-postgres
+  namespace: n8n
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: n8n-pg
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: n8n
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+---
+# Allow all pods cluster-internal egress (DNS, K8s API, inter-pod)
+# CNPG requires K8s API access
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cluster-egress
+  namespace: n8n
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - cluster
+        - host
+---
+# Allow n8n pods full egress (Ollama on LAN, Resend API, ntfy, etc.)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-n8n-egress
+  namespace: n8n
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: n8n
+  egress:
+    - toEntities:
+        - world
+---
+# Allow k8s-learn to reach n8n webhooks
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-k8s-learn-ingress
+  namespace: n8n
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: n8n
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: k8s-learn
+      toPorts:
+        - ports:
+            - port: "5678"
+              protocol: TCP
+---
+# Allow CNPG operator to reach PostgreSQL status endpoint
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cnpg-operator
+  namespace: n8n
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: n8n-pg
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+---
+# Allow monitoring (Prometheus scraping)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: n8n
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring

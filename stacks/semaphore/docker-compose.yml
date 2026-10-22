@@ -1,0 +1,51 @@
+services:
+  semaphore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mono-homelab/semaphore:v2.10.22
+    container_name: semaphore
+    restart: unless-stopped
+    env_file:
+      - ../env
+    environment:
+      SEMAPHORE_DB_DIALECT: postgres
+      SEMAPHORE_DB_HOST: ${DB_HOST}
+      SEMAPHORE_DB_PORT: "5432"
+      SEMAPHORE_DB_USER: semaphore
+      SEMAPHORE_DB_PASS: ${SEMAPHORE_DB_PASS}
+      SEMAPHORE_DB: semaphore
+      SEMAPHORE_PLAYBOOK_PATH: /tmp/semaphore/
+      SEMAPHORE_ADMIN_PASSWORD: ${SEMAPHORE_ADMIN_PASSWORD}
+      SEMAPHORE_ADMIN_NAME: admin
+      SEMAPHORE_ADMIN_EMAIL: admin@bp31app.com
+      SEMAPHORE_ADMIN: admin
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: ${SEMAPHORE_ACCESS_KEY_ENCRYPTION}
+      SEMAPHORE_LDAP_ACTIVATED: "no"
+    ports:
+      - "3000:3000"
+    volumes:
+      - semaphore-data:/var/lib/semaphore
+      - /opt/secrets/id_homelab:/home/semaphore/.ssh/id_homelab:ro
+      - /opt/secrets/id_homelab.pub:/home/semaphore/.ssh/id_homelab.pub:ro
+    networks:
+      - homelab
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.semaphore.rule=Host(`semaphore.local.bp31app.com`)"
+      - "traefik.http.routers.semaphore.entrypoints=web"
+      - "traefik.http.routers.semaphore.service=semaphore"
+      - "traefik.http.services.semaphore.loadbalancer.server.port=3000"
+      - "homepage.group=Infrastructure"
+      - "homepage.name=Semaphore"
+      - "homepage.icon=ansible"
+      - "homepage.href=https://semaphore.local.bp31app.com"
+      - "homepage.description=Ansible Web UI"
+
+volumes:
+  semaphore-data:
+
+networks:
+  homelab:
+    name: homelab
+    external: true

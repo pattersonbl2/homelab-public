@@ -1,0 +1,64 @@
+---
+- name: Setup restic backup on LXCs
+  hosts: lxcs
+  become: true
+  vars:
+    restic_password: "{{ lookup('env', 'RESTIC_PASSWORD') }}"
+    # NFS is mounted on the Proxmox host and bind-mounted into each LXC at /mnt/backup.
+    # Each LXC gets its own subdirectory (restic-<hostname>) so the repo root is /mnt/backup.
+    truenas_backup_nfs: "192.168.50.106:/mnt/media/backup/docker"
+
+  tasks:
+    - name: Install restic and nfs-common
+      apt:
+        name: [restic, nfs-common]
+        state: present
+        update_cache: true
+
+    - name: Create backup mount point
+      file:
+        path: /mnt/backup
+        state: directory
+        mode: "0700"
+      ignore_errors: true  # bind mount from Proxmox host may reject chmod from unprivileged LXC
+
+    # NFS is mounted on the Proxmox host at /mnt/backup/docker and bind-mounted
+    # per-LXC into /mnt/backup (each LXC sees its own restic-<hostname> subdir).
+    # Direct NFS mounts from unprivileged/privileged LXCs encountered access issues;
+    # Proxmox bind mount is the established pattern in this homelab.
+    - name: Write restic env file
+      copy:
+        dest: /etc/restic-env
+        mode: "0600"
+        content: |
+          RESTIC_REPOSITORY=/mnt/backup
+          RESTIC_PASSWORD={{ restic_password }}
+
+    - name: Initialize restic repository
+      shell: |
+        set -a; source /etc/restic-env; set +a
+        restic snapshots 2>/dev/null || restic init
+      args:
+        executable: /bin/bash
+
+    - name: Write backup script
+      copy:
+        dest: /usr/local/bin/restic-backup.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -a; source /etc/restic-env; set +a
+          if [ "$(hostname)" = "pihole-lxc" ]; then
+            restic backup /etc/pihole --tag pihole-lxc
+          elif [ "$(hostname)" = "jellyfin-lxc" ]; then
+            restic backup /var/lib/jellyfin /etc/jellyfin --tag jellyfin-lxc
+          fi
+          restic forget --keep-daily 7 --keep-weekly 4 --prune
+          echo "Backup complete: $(date)"
+
+    - name: Schedule daily backup at 2:30am
+      cron:
+        name: restic-backup
+        minute: "30"
+        hour: "2"
+        job: /usr/local/bin/restic-backup.sh >> /var/log/restic-backup.log 2>&1

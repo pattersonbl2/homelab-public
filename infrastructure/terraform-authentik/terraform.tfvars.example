@@ -1,0 +1,15 @@
+# Authentik Terraform Configuration
+# Copy to terraform.tfvars and fill in values
+
+# API token from Authentik Admin > System > Tokens
+authentik_token = "your-authentik-api-token-here"
+
+# Authentik URL (default: https://auth.vps.bp31app.com)
+# authentik_url = "https://auth.vps.bp31app.com"
+
+# Pangolin redirect URI (update after configuring Pangolin identity provider)
+# The default assumes identity provider ID 1
+# pangolin_redirect_uri = "https://pangolin.vps.bp31app.com/auth/idp/1/oidc/callback"
+
+# Base domain for services
+# domain = "vps.bp31app.com"

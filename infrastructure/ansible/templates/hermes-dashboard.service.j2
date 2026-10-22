@@ -1,0 +1,15 @@
+[Unit]
+Description=Hermes Agent Dashboard
+After=hermes-gateway.service
+Wants=hermes-gateway.service
+
+[Service]
+ExecStart=/opt/hermes/.venv/bin/hermes dashboard --host 0.0.0.0 --no-open --insecure
+WorkingDirectory=/root/.hermes
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

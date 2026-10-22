@@ -1,0 +1,45 @@
+# kubernetes/scripts/bootstrap-breakglass-rbac.yaml
+#
+# NOT an ArgoCD-managed resource. Applied once, directly, via
+# bootstrap-breakglass-rbac.sh — same pattern as bootstrap-secrets.sh.
+# Grants breakglass-lxc's rollout_restart tool exactly enough permission
+# to restart allow-listed Deployments, nothing else (no get/list/watch on
+# Secrets, no cluster-admin, no apply).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: breakglass
+  namespace: uptime-kuma
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: breakglass-rollout-restart
+  namespace: uptime-kuma
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: breakglass-rollout-restart
+  namespace: uptime-kuma
+subjects:
+  - kind: ServiceAccount
+    name: breakglass
+    namespace: uptime-kuma
+roleRef:
+  kind: Role
+  name: breakglass-rollout-restart
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: breakglass-token
+  namespace: uptime-kuma
+  annotations:
+    kubernetes.io/service-account.name: breakglass
+type: kubernetes.io/service-account-token

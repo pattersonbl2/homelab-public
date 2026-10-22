@@ -1,0 +1,19 @@
+{
+  "monitors": [
+    {"name": "K8s Learn - Signup", "url": "https://learn.bp31app.com", "group": "K8s Learn"},
+    {"name": "K8s Learn - Tasks", "url": "https://learn-tasks.bp31app.com", "group": "K8s Learn"},
+{"name": "Uptime Kuma", "url": "https://uptime.bp31app.com", "group": "Public Services"},
+    {"name": "Ntfy", "url": "https://ntfy.bp31app.com", "group": "Public Services"},
+    {"name": "Vaultwarden", "url": "https://vault.bp31app.com", "group": "Public Services"},
+    {"name": "ArgoCD", "url": "https://argocd.bp31app.com", "group": "Public Services"},
+    {"name": "Grafana (VPS)", "url": "https://grafana.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Prometheus (VPS)", "url": "https://prometheus.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Alertmanager (VPS)", "url": "https://alertmanager.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Longhorn (VPS)", "url": "https://longhorn.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Uptime Kuma (VPS)", "url": "https://uptime.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Ntfy (VPS)", "url": "https://ntfy.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Vaultwarden (VPS)", "url": "https://vault.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Hubble (VPS)", "url": "https://hubble.vps.bp31app.com", "group": "VPS Services"},
+    {"name": "Ollama (VPS)", "url": "https://ollama.vps.bp31app.com", "group": "VPS Services"}
+  ]
+}

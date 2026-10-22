@@ -1,0 +1,226 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun:v3.41.3
+    container_name: gluetun
+    env_file:
+      - ../env
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    extra_hosts:
+      - "news.eweka.nl:REDACTED_PROVIDER_IP"
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${P_KEY}
+      - SERVER_COUNTRIES=Netherlands
+      - DOT=off
+      - DNS_ADDRESS=1.1.1.1
+    ports:
+      - 8080:8080   # qbittorrent
+      - 8191:8191   # flaresolverr
+      - 6789:6789   # nzbget
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null -S http://127.0.0.1:8000/v1/publicip/ip 2>&1 | grep -q 'HTTP/'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    volumes:
+      - /data/gluetun:/gluetun
+    networks:
+      - media
+    labels:
+      - "homepage.group=VPN"
+      - "homepage.name=Gluetun"
+      - "homepage.icon=gluetun"
+      - "homepage.description=VPN Container"
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:5.2.2_v2.0.13-ls464
+    container_name: qbittorrent
+    restart: unless-stopped
+    environment:
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+      - WEBUI_PORT=8080
+    volumes:
+      - /data/qbittorrent:/config
+      - /mnt/arr:/media
+      # LinuxServer qBittorrent default SavePath=/downloads/ - must match Sonarr/Radarr
+      - /mnt/arr/downloads:/downloads
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_started
+    labels:
+      - "homepage.group=Downloads"
+      - "homepage.name=qBittorrent"
+      - "homepage.icon=qbittorrent"
+      - "homepage.href=https://qbit.${DOMAIN}"
+      - "homepage.description=Torrent Client"
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:2.4.0.5397-ls151
+    container_name: prowlarr
+    environment:
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+    volumes:
+      - /data/prowlarr:/config
+    restart: unless-stopped
+    ports:
+      - 9696:9696
+    networks:
+      - media
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "homepage.group=Downloads"
+      - "homepage.name=Prowlarr"
+      - "homepage.icon=prowlarr"
+      - "homepage.href=https://prowlarr.${DOMAIN}"
+      - "homepage.description=Indexer Manager"
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:4.0.19.2979-ls316
+    container_name: sonarr
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 512M
+        limits:
+          memory: 1G
+    environment:
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+    volumes:
+      - /data/sonarr:/config
+      - /mnt/arr:/media
+      # Explicit mount so Sonarr can Manual Import from completed/TV
+      - /mnt/arr/completed:/media/staging
+      # Same path as qBittorrent so Sonarr can import - root folder = /media/tv
+      - /mnt/arr/downloads:/downloads
+    ports:
+      - 8989:8989
+    networks:
+      - media
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "homepage.group=Media"
+      - "homepage.name=Sonarr"
+      - "homepage.icon=sonarr"
+      - "homepage.href=https://sonarr.${DOMAIN}"
+      - "homepage.description=TV Shows"
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:6.2.1.10461-ls308
+    container_name: radarr
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 512M
+        limits:
+          memory: 1G
+    environment:
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+    volumes:
+      - /data/radarr:/config
+      - /mnt/arr:/media
+      # Same path as qBittorrent so Radarr can import - root folder = /media/movies
+      - /mnt/arr/downloads:/downloads
+    ports:
+      - 7878:7878
+    networks:
+      - media
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "homepage.group=Media"
+      - "homepage.name=Radarr"
+      - "homepage.icon=radarr"
+      - "homepage.href=https://radarr.${DOMAIN}"
+      - "homepage.description=Movies"
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.0
+    container_name: flaresolverr
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_started
+    environment:
+      - LOG_LEVEL=info
+      - TZ=America/New_York
+
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:v26.2-ls250
+    container_name: nzbget
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_started
+    environment:
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+    volumes:
+      - /data/nzbget:/config
+      - /mnt/arr:/media
+      - /mnt/arr/downloads:/downloads
+    labels:
+      - "homepage.group=Downloads"
+      - "homepage.name=NZBGet"
+      - "homepage.icon=nzbget"
+      - "homepage.href=https://nzbget.${DOMAIN}"
+      - "homepage.description=Usenet Client"
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:2.7.3
+    container_name: jellyseerr
+    environment:
+      - PUID=3000
+      - PGID=3000
+      - TZ=America/New_York
+    volumes:
+      - /data/jellyseerr:/app/config
+    restart: unless-stopped
+    ports:
+      - 5055:5055
+    networks:
+      - media
+    labels:
+      - "homepage.group=Media"
+      - "homepage.name=Jellyseerr"
+      - "homepage.icon=jellyseerr"
+      - "homepage.href=https://requests.${DOMAIN}"
+      - "homepage.description=Media Requests"
+
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:8.3.2
+    container_name: recyclarr
+    user: "3000:3000"
+    environment:
+      - TZ=America/New_York
+    volumes:
+      - /data/recyclarr:/config
+    networks:
+      - media
+    restart: unless-stopped
+
+networks:
+  media:
+    name: homelab
+    external: true

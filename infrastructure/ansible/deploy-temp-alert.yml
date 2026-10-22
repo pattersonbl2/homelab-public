@@ -1,0 +1,53 @@
+---
+# Temperature watchdog for Proxmox hosts (garage heat wave, Jul 2026).
+# Deployed by hand via SSH on 2026-07-04; this playbook makes it repeatable.
+# Alerts to ntfy.bp31app.com/homelab-alerts; thresholds env-overridable in
+# the script (HDD 50C, NVMe 65C, CPU package 80C, GPU 80C, 30min cooldown).
+#
+# Usage: ansible-playbook -i inventory.ini deploy-temp-alert.yml
+- name: Deploy temperature watchdog to Proxmox hosts
+  hosts: proxmox
+  become: yes
+  tasks:
+    - name: Install temp-alert script
+      copy:
+        src: files/temp-alert.sh
+        dest: /usr/local/bin/temp-alert.sh
+        mode: "0755"
+
+    - name: Install temp-alert service unit
+      copy:
+        dest: /etc/systemd/system/temp-alert.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Temperature watchdog (ntfy alerts)
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/temp-alert.sh
+
+    - name: Install temp-alert timer unit
+      copy:
+        dest: /etc/systemd/system/temp-alert.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Run temperature watchdog every 3 minutes
+
+          [Timer]
+          OnBootSec=2min
+          OnUnitActiveSec=3min
+          RandomizedDelaySec=20
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable and start temp-alert timer
+      systemd:
+        name: temp-alert.timer
+        daemon_reload: yes
+        enabled: yes
+        state: started

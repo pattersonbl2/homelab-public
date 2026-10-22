@@ -1,0 +1,38 @@
+title: Homelab Dashboard
+
+background:
+  image: https://images.unsplash.com/photo-1502790671504-542ad42d5189?auto=format&fit=crop&w=2560&q=80
+  blur: sm
+  saturate: 50
+  brightness: 50
+  opacity: 50
+
+cardBlur: md
+theme: dark
+color: slate
+
+layout:
+  Infrastructure:
+    style: row
+    columns: 4
+  Monitoring:
+    style: row
+    columns: 4
+  Security:
+    style: row
+    columns: 3
+  Networking:
+    style: row
+    columns: 2
+  Notifications:
+    style: row
+    columns: 2
+  Media:
+    style: row
+    columns: 4
+  Downloads:
+    style: row
+    columns: 3
+  VPN:
+    style: row
+    columns: 2

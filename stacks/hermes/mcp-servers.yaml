@@ -1,0 +1,29 @@
+# Hermes MCP wiring.
+#
+# Hermes stores config in the hermes-data volume at /opt/data/config.yaml
+# (HERMES_HOME=/opt/data). It is NOT in this repo, so this file documents the
+# block that must be appended to that config.yaml under the top-level
+# `mcp_servers:` key. After editing, restart the gateway:
+#
+#   docker restart hermes
+#
+# Verify registration:
+#   docker exec -u hermes hermes /opt/hermes/bin/hermes mcp list
+#
+# 2026-07-30: retired `local_agents` (the separate LangGraph agent-manager
+# service on agents-lxc, LXC 141) in favor of `local-worker` below, which now
+# takes an optional `role` argument (worker/researcher/coder/summarizer) —
+# see services/local-worker/local_worker/roles.py. Both delegated to the same
+# Ollama instance on llm-lxc; running a second container/LXC for the same job
+# was redundant. agents-manager container stopped (not destroyed) on
+# agents-lxc; the LXC itself is otherwise unused as of this change.
+
+mcp_servers:
+  local-worker:
+    command: /opt/data/mcp-installs/local-worker/.venv/bin/python
+    args:
+      - /opt/data/mcp-installs/local-worker/run_server.py
+    enabled: true
+    tools:
+      include:
+        - local_worker

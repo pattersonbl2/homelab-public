@@ -1,0 +1,357 @@
+---
+# kube-prometheus-stack via Helm
+# Includes Prometheus, Grafana, Alertmanager, and various exporters
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 67.4.0
+    helm:
+      releaseName: kube-prometheus-stack
+      valuesObject:
+        grafana:
+          enabled: true
+          adminPassword: admin
+          persistence:
+            enabled: true
+            size: 5Gi
+          deploymentStrategy:
+            type: RollingUpdate
+            rollingUpdate:
+              maxSurge: 0
+              maxUnavailable: 1
+          plugins:
+            - yesoreyeram-infinity-datasource
+          ingress:
+            enabled: false
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              url: http://loki-stack:3100
+              access: proxy
+              isDefault: false
+          defaultDashboardsEnabled: true
+          defaultDashboardsTimezone: America/Toronto
+          sidecar:
+            dashboards:
+              folderAnnotation: grafana_folder
+              provider:
+                foldersFromFilesStructure: true
+          dashboardProviders:
+            dashboardproviders.yaml:
+              apiVersion: 1
+              providers:
+                - name: infrastructure
+                  orgId: 1
+                  folder: Infrastructure
+                  type: file
+                  disableDeletion: false
+                  editable: true
+                  options:
+                    path: /var/lib/grafana/dashboards/infrastructure
+          dashboards:
+            infrastructure:
+              node-exporter-full:
+                gnetId: 1860
+                revision: 37
+                datasource: Prometheus
+              proxmox-ve:
+                gnetId: 10347
+                revision: 4
+                datasource: Prometheus
+              blackbox-exporter:
+                gnetId: 7587
+                revision: 3
+                datasource: Prometheus
+              trivy-operator:
+                gnetId: 17813
+                revision: 2
+                datasource: Prometheus
+          assertNoLeakedSecrets: false
+          grafana.ini:
+            server:
+              root_url: https://grafana.vps.bp31app.com
+            auth.generic_oauth:
+              enabled: true
+              name: Authentik
+              allow_sign_up: true
+              client_id: grafana
+              client_secret: SET_VIA_SEALED_SECRET
+              scopes: openid profile email
+              auth_url: https://auth.vps.bp31app.com/application/o/authorize/
+              token_url: https://auth.vps.bp31app.com/application/o/token/
+              api_url: https://auth.vps.bp31app.com/application/o/userinfo/
+              role_attribute_path: "contains(groups, 'homelab-admins') && 'Admin' || 'Viewer'"
+              auto_login: false
+        prometheus:
+          prometheusSpec:
+            retention: 15d
+            retentionSize: "10GB"
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 20Gi
+            resources:
+              requests:
+                memory: 512Mi
+                cpu: 250m
+              limits:
+                memory: 2Gi
+                cpu: 1000m
+            additionalScrapeConfigs:
+              # Docker-hosted LXC fleet on autobots — host metrics via node_exporter
+              - job_name: lxc-node
+                static_configs:
+                  - targets: ['192.168.50.20:9100']
+                    labels: {instance: pihole-lxc, env: lxc}
+                  - targets: ['192.168.50.30:9100']
+                    labels: {instance: media-lxc, env: lxc}
+                  - targets: ['192.168.50.31:9100']
+                    labels: {instance: jellyfin-lxc, env: lxc}
+                  - targets: ['192.168.50.32:9100']
+                    labels: {instance: llm-lxc, env: lxc}
+                  - targets: ['192.168.50.33:9100']
+                    labels: {instance: proxy-lxc, env: lxc}
+                  - targets: ['192.168.50.40:9100']
+                    labels: {instance: dockerhost-lxc, env: lxc}
+                  - targets: ['192.168.50.42:9100']
+                    labels: {instance: vaultwarden-lxc, env: lxc}
+                  - targets: ['192.168.50.44:9100']
+                    labels: {instance: gitea-lxc, env: lxc}
+                  - targets: ['192.168.50.15:9100']
+                    labels: {instance: soundwave, env: lxc}
+              # Per-container metrics via cAdvisor, on each Docker-hosting LXC
+              - job_name: lxc-cadvisor
+                static_configs:
+                  - targets: ['192.168.50.30:8083']
+                    labels: {instance: media-lxc}
+                  - targets: ['192.168.50.31:8083']
+                    labels: {instance: jellyfin-lxc}
+                  - targets: ['192.168.50.32:8083']
+                    labels: {instance: llm-lxc}
+                  - targets: ['192.168.50.33:8083']
+                    labels: {instance: proxy-lxc}
+                  - targets: ['192.168.50.40:8083']
+                    labels: {instance: dockerhost-lxc}
+              # Central Traefik (proxy-lxc) — reverse proxy metrics
+              - job_name: docker-traefik
+                static_configs:
+                  - targets:
+                      - 192.168.50.33:8082
+                    labels:
+                      instance: proxy-lxc
+                      env: docker
+              # PostgreSQL — soundwave (192.168.50.15)
+              - job_name: postgres
+                static_configs:
+                  - targets:
+                      - 192.168.50.15:9187
+                    labels:
+                      instance: soundwave
+              # NVIDIA RTX 3060 GPU — llm-lxc (192.168.50.32), shared with jellyfin-lxc
+              - job_name: nvidia-gpu
+                static_configs:
+                  - targets:
+                      - 192.168.50.32:9835
+                    labels:
+                      instance: llm-lxc
+                      gpu: rtx3060
+              # VPS host metrics via node-exporter exposed through Pangolin/Traefik
+              - job_name: vps-node
+                scheme: https
+                tls_config:
+                  insecure_skip_verify: true
+                metrics_path: /metrics
+                static_configs:
+                  - targets:
+                      - vps-metrics.vps.bp31app.com
+                    labels:
+                      instance: vps
+                      env: vps
+              # VPS Traefik (pangolin/gerbil) — reverse proxy metrics
+              - job_name: vps-traefik
+                scheme: https
+                tls_config:
+                  insecure_skip_verify: true
+                metrics_path: /metrics
+                static_configs:
+                  - targets:
+                      - traefik-metrics.vps.bp31app.com
+                    labels:
+                      instance: vps
+                      env: vps
+              # Proxmox VE cluster — via pve_exporter on dockerhost-lxc
+              - job_name: proxmox
+                metrics_path: /pve
+                params:
+                  module: [default]
+                  cluster: ["1"]
+                  node: ["1"]
+                static_configs:
+                  - targets:
+                      - 192.168.50.176  # autobots
+                      - 192.168.50.99   # maximals
+                relabel_configs:
+                  - source_labels: [__address__]
+                    target_label: __param_target
+                  - source_labels: [__param_target]
+                    target_label: instance
+                  - target_label: __address__
+                    replacement: 192.168.50.40:9221  # pve-exporter on dockerhost-lxc
+              # VyOS router — via snmp_exporter
+              - job_name: vyos-snmp
+                metrics_path: /snmp
+                params:
+                  module: [if_mib]
+                  auth: [vyos_v2]
+                static_configs:
+                  - targets:
+                      - 10.10.10.1
+                    labels:
+                      instance: vyos-gw
+                relabel_configs:
+                  - source_labels: [__address__]
+                    target_label: __param_target
+                  - target_label: __address__
+                    replacement: snmp-exporter.monitoring.svc.cluster.local:9116
+              # CrowdSec — VPS security metrics via Traefik
+              - job_name: crowdsec
+                scheme: https
+                tls_config:
+                  insecure_skip_verify: true
+                static_configs:
+                  - targets:
+                      - crowdsec-metrics.vps.bp31app.com
+                    labels:
+                      instance: vps
+                      env: vps
+              # Blackbox HTTP probes — synthetic endpoint monitoring
+              - job_name: blackbox-http
+                metrics_path: /probe
+                params:
+                  module: [http_2xx]
+                static_configs:
+                  - targets:
+                      - https://gitea.bp31app.com
+                      - https://n8n.bp31app.com
+                      - https://argocd.bp31app.com
+                      - https://vault.bp31app.com
+                      - https://ntfy.bp31app.com
+                      - https://uptime.bp31app.com
+                      - https://grafana.vps.bp31app.com
+                      - https://longhorn.vps.bp31app.com
+                      - https://auth.vps.bp31app.com
+                      - https://pangolin.vps.bp31app.com
+                relabel_configs:
+                  - source_labels: [__address__]
+                    target_label: __param_target
+                  - source_labels: [__param_target]
+                    target_label: instance
+                  - target_label: __address__
+                    replacement: prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+              # Blackbox ICMP probes — key host reachability
+              - job_name: blackbox-icmp
+                metrics_path: /probe
+                params:
+                  module: [icmp]
+                static_configs:
+                  - targets:
+                      - 192.168.50.176  # autobots
+                      - 192.168.50.99   # maximals
+                      - 192.168.50.15   # soundwave (postgres)
+                      - 192.168.50.18   # vyos-gw
+                      - 192.168.50.20   # pihole-lxc
+                      - 192.168.50.30   # media-lxc
+                      - 192.168.50.31   # jellyfin-lxc
+                      - 192.168.50.32   # llm-lxc
+                      - 192.168.50.33   # proxy-lxc
+                      - 192.168.50.40   # dockerhost-lxc
+                      - 192.168.50.42   # vaultwarden-lxc
+                      - 192.168.50.44   # gitea-lxc
+                relabel_configs:
+                  - source_labels: [__address__]
+                    target_label: __param_target
+                  - source_labels: [__param_target]
+                    target_label: instance
+                  - target_label: __address__
+                    replacement: prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+          ingress:
+            enabled: false
+        alertmanager:
+          alertmanagerSpec:
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 5Gi
+            resources:
+              requests:
+                memory: 64Mi
+                cpu: 50m
+              limits:
+                memory: 256Mi
+                cpu: 200m
+          # Config is managed via manually applied SOPS secret:
+          # infrastructure/monitoring/alertmanager-secret.secret.yaml
+          # The secret name must match: alertmanager-kube-prometheus-stack-alertmanager
+        # Disable components not available on K3s
+        kubeEtcd:
+          enabled: false
+        kubeControllerManager:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeProxy:
+          enabled: false
+        # Disable kubelet recording/alerting rules that fail on K3s
+        # (missing metrics: kubelet_certificate_manager_client_ttl_seconds, kubelet_node_config_error)
+        defaultRules:
+          disabled:
+            KubeletDown: true
+          rules:
+            kubelet: false
+        # Disable dashboards not relevant to this homelab
+        coreDns:
+          enabled: false
+        nodeExporter:
+          enabled: true
+        prometheus-node-exporter:
+          hostNetwork: false
+          hostRootFsMount:
+            enabled: true
+        kubeStateMetrics:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # Alertmanager secret is managed by monitoring-ingress via KSOPS
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: alertmanager-kube-prometheus-stack-alertmanager
+      jsonPointers:
+        - /data
+        - /stringData
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

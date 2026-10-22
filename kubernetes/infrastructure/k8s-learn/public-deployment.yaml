@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-learn
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-learn-public
+  namespace: k8s-learn
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: k8s-learn-public}
+  template:
+    metadata:
+      labels: {app: k8s-learn-public}
+    spec:
+      serviceAccountName: k8s-learn-public
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+      - name: k8s-learn
+        image: ghcr.io/pattersonbl2/k8s-learn-auth-proxy:sha-78c2e41
+        args: ["--mode=public"]
+        env:
+        - name: N8N_NOTIFICATION_URL
+          value: "http://n8n.n8n.svc.cluster.local:5678/webhook/k8s-learn-notification"
+        ports:
+        - {containerPort: 8080}
+        resources:
+          requests: {cpu: 10m, memory: 16Mi}
+          limits: {cpu: 50m, memory: 32Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-learn-public
+  namespace: k8s-learn
+spec:
+  selector: {app: k8s-learn-public}
+  ports:
+  - {port: 8080, targetPort: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-learn-signup
+  namespace: k8s-learn
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: learn.bp31app.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: k8s-learn-public
+            port: {number: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-learn-tasks
+  namespace: k8s-learn
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: learn-tasks.bp31app.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: k8s-learn-public
+            port: {number: 8080}

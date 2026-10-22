@@ -1,0 +1,65 @@
+---
+# Base configuration for VPS (Hetzner or similar).
+# Run first, then vps-exit-node-k3s-cp.yml if adding as K3s control plane.
+# Usage: ansible-playbook -i inventory-vps.ini vps-base.yml
+#
+- name: Base VPS setup
+  hosts: vps
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - gnupg
+          - apt-transport-https
+          - software-properties-common
+          - unattended-upgrades
+        state: present
+
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: Ensure UFW allows SSH
+      ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Enable UFW (default deny incoming)
+      ufw:
+        state: enabled
+        direction: incoming
+        policy: deny
+
+    - name: Harden SSH – disable password authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+      notify: Restart SSH
+
+    - name: Harden SSH – root key-only
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin prohibit-password'
+        state: present
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      systemd:
+        name: ssh
+        state: restarted
+      listen: Restart SSH

@@ -1,0 +1,15 @@
+[Unit]
+Description=Hermes Agent Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/hermes/.venv/bin/hermes gateway run
+WorkingDirectory=/root/.hermes
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

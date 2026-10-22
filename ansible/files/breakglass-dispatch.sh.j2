@@ -1,0 +1,21 @@
+#!/bin/bash
+# Only ever invoked via the forced `command=` in authorized_keys for the
+# breakglass SSH key. $SSH_ORIGINAL_COMMAND is what breakglass asked to run;
+# it must exactly match one of the allow-listed commands below, or nothing
+# runs.
+set -euo pipefail
+
+ALLOWED_COMMANDS=(
+{% for cmd in breakglass_allowed_commands %}
+  "{{ cmd }}"
+{% endfor %}
+)
+
+for allowed in "${ALLOWED_COMMANDS[@]}"; do
+  if [[ "${SSH_ORIGINAL_COMMAND:-}" == "$allowed" ]]; then
+    exec bash -c "$allowed"
+  fi
+done
+
+echo "breakglass-dispatch: command not allow-listed on this host" >&2
+exit 1

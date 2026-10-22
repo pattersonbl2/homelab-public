@@ -1,0 +1,17 @@
+services:
+  agents-manager:
+    build: ./manager
+    image: agents-manager:local
+    container_name: agents-manager
+    restart: unless-stopped
+    ports:
+      - "8900:8900"
+    environment:
+      - OLLAMA_BASE_URL=http://192.168.50.32:11434
+      - AGENTS_MODEL=qwen2.5:7b-instruct
+      - MCP_TRANSPORT=streamable-http
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

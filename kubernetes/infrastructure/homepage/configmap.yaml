@@ -1,0 +1,192 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage-config
+  namespace: homepage
+data:
+  settings.yaml: |
+    title: Homelab Dashboard
+
+    background:
+      image: https://images.unsplash.com/photo-1502790671504-542ad42d5189?auto=format&fit=crop&w=2560&q=80
+      blur: sm
+      saturate: 50
+      brightness: 50
+      opacity: 50
+
+    cardBlur: md
+    theme: dark
+    color: slate
+
+    layout:
+      Infrastructure:
+        style: row
+        columns: 4
+      Monitoring:
+        style: row
+        columns: 4
+      Security:
+        style: row
+        columns: 3
+      Networking:
+        style: row
+        columns: 3
+      Automation:
+        style: row
+        columns: 2
+      Notifications:
+        style: row
+        columns: 2
+      Media:
+        style: row
+        columns: 4
+
+  widgets.yaml: |
+    - search:
+        provider: duckduckgo
+        target: _blank
+
+  kubernetes.yaml: |
+    mode: cluster
+
+  docker.yaml: ""
+
+  services.yaml: |
+    # Services are auto-discovered via Docker labels (Traefik, Portainer)
+    # Manual services listed below
+
+    - Infrastructure:
+        - Proxmox (autobots):
+            icon: proxmox
+            href: https://autobots.local.bp31app.com:8006
+            description: Proxmox Node 1
+        - Proxmox (decepticons):
+            icon: proxmox
+            href: https://decepticons.local.bp31app.com:8006
+            description: Proxmox Node 2
+        - Proxmox (maximals):
+            icon: proxmox
+            href: https://maximals.local.bp31app.com:8006
+            description: Proxmox Node 3
+        - ArgoCD:
+            icon: argocd
+            href: https://argocd.vps.bp31app.com
+            description: GitOps Continuous Delivery
+        - Gitea:
+            icon: gitea
+            href: https://gitea.bp31app.com
+            description: Self-Hosted Git
+        - Longhorn:
+            icon: longhorn
+            href: https://longhorn.vps.bp31app.com
+            description: K8s Replicated Storage
+        - Semaphore:
+            icon: ansible
+            href: http://semaphore.local.bp31app.com
+            description: Ansible Web UI
+
+    - Monitoring:
+        - Grafana:
+            icon: grafana
+            href: https://grafana.vps.bp31app.com
+            description: Dashboards & Metrics
+            widget:
+              type: grafana
+              url: https://grafana.vps.bp31app.com
+              username: admin
+              password: "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}"
+        - Prometheus:
+            icon: prometheus
+            href: https://prometheus.vps.bp31app.com
+            description: Metrics Collection
+        - Alertmanager:
+            icon: alertmanager
+            href: https://alertmanager.vps.bp31app.com
+            description: Alert Routing
+        - Uptime Kuma:
+            icon: uptime-kuma
+            href: https://uptime.vps.bp31app.com
+            description: Status Monitoring
+            widget:
+              type: uptimekuma
+              url: https://uptime.vps.bp31app.com
+              slug: homelab
+
+    - Security:
+        - Vaultwarden:
+            icon: vaultwarden
+            href: https://vault.vps.bp31app.com
+            description: Password Manager
+        - Authentik:
+            icon: authentik
+            href: https://auth.vps.bp31app.com
+            description: SSO / Identity Provider
+        - Pangolin:
+            icon: pangolin
+            href: https://pangolin.vps.bp31app.com
+            description: Tunnel Control Plane
+
+    - Networking:
+        - Pi-hole (Local):
+            icon: pi-hole
+            href: http://192.168.50.20/admin
+            description: Local DNS Ad Blocker (LXC)
+        - Pi-hole (VPS):
+            icon: pi-hole
+            href: https://dns.vps.bp31app.com
+            description: VPS DNS Ad Blocker
+        - Hubble:
+            icon: cilium
+            href: https://hubble.vps.bp31app.com
+            description: Cilium Network Observability
+
+    - Automation:
+        - N8N:
+            icon: n8n
+            href: https://n8n.bp31app.com
+            description: Workflow Automation
+
+    - Notifications:
+        - Ntfy:
+            icon: ntfy
+            href: https://ntfy.vps.bp31app.com
+            description: Push Notifications
+
+    - Media:
+        - Jellyfin:
+            icon: jellyfin
+            href: http://192.168.50.21:8096
+            description: Media Server (LXC)
+        - Jellyseerr:
+            icon: jellyseerr
+            href: https://jellyseerr.bp31app.com
+            description: Media Requests
+        - Sonarr:
+            icon: sonarr
+            href: https://sonarr.bp31app.com
+            description: TV Shows
+        - Radarr:
+            icon: radarr
+            href: https://radarr.bp31app.com
+            description: Movies
+        - Whisparr:
+            icon: whisparr
+            href: https://whisparr.bp31app.com
+            description: Adult Content
+        - Prowlarr:
+            icon: prowlarr
+            href: https://prowlarr.bp31app.com
+            description: Indexer Manager
+        - qBittorrent:
+            icon: qbittorrent
+            href: https://qbittorrent.bp31app.com
+            description: Torrent Client
+        - NZBGet:
+            icon: nzbget
+            href: https://nzbget.bp31app.com
+            description: Usenet Client
+        - Speedtest:
+            icon: speedtest
+            href: https://speedtest.bp31app.com
+            description: VPN Speed Test
